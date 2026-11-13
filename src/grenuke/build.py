@@ -356,7 +356,16 @@ def blend(cfg: dict, device: str, threads: int, lock: str | None):
 # -- entry -----------------------------------------------------------------------------------
 
 
-def build(cfg: dict, out: Path, device: str, threads: int, lock: str | None = None) -> Path:
+def build(
+    cfg: dict,
+    out: Path,
+    device: str,
+    threads: int,
+    lock: str | None = None,
+    plan: dict | None = None,
+) -> Path | None:
+    """`plan` (selftrain configs only): `stage`, `models`, `worker`, `workers` of
+    `grenuke.selftrain.selftrain`; a `prep` or `fit` stage writes no file and returns None."""
     import numpy as np
 
     from grenuke import data
@@ -382,7 +391,10 @@ def build(cfg: dict, out: Path, device: str, threads: int, lock: str | None = No
     elif kind == "selftrain":
         from grenuke.selftrain import selftrain
 
-        pred, meta = selftrain(cfg, device, threads, lock)
+        pred, meta = selftrain(cfg, device, threads, lock, **(plan or {}))
+        if pred is None:
+            print(f"   stage {plan['stage']} done in {time.perf_counter() - started:.0f}s")
+            return None
     else:
         raise SystemExit(f"unknown kind {kind!r}")
     write_csv(test_ids(meta), np.array(LABELS)[pred], out)
@@ -401,6 +413,20 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--gpu-lock", default=None, help="run each GPU step in its own process under flock(FILE)"
     )
+    split = parser.add_argument_group(
+        "selftrain configs: split the fits over processes or machines that share the cache"
+    )
+    split.add_argument(
+        "--stage",
+        choices=("all", "prep", "fit", "lomo", "lomo-fit"),
+        default="all",
+        help="prep: features, pools and fraud score only; fit: this worker's fits only, no file; "
+        "lomo: leave-one-month-out evaluation, --out is an .npz of decoded training rows; "
+        "lomo-fit: this worker's evaluation fits only",
+    )
+    split.add_argument("--models", default=None, help="fit stage: learners to fit (comma list)")
+    split.add_argument("--worker", type=int, default=0, help="fit stage: this worker's index")
+    split.add_argument("--workers", type=int, default=1, help="fit stage: number of workers")
     args = parser.parse_args(argv)
     _cap_threads(args.threads)
 
@@ -412,7 +438,35 @@ def main(argv: list[str] | None = None) -> None:
     out = Path(args.out or f"{name}.csv")
     print(f"== {name}: device {args.device}, {args.threads} threads", flush=True)
     _check_versions(cfg, args.device)
-    build(cfg, out, args.device, args.threads, args.gpu_lock)
+    plan = None
+    if args.stage != "all" or args.models or args.workers != 1:
+        if cfg.get("kind") != "selftrain":
+            raise SystemExit("--stage, --models and --workers apply to selftrain configs only")
+        if args.stage in ("lomo", "lomo-fit"):
+            from grenuke import data
+            from grenuke.selftrain import lomo
+
+            data.ingest()
+            lomo(
+                cfg,
+                args.device,
+                args.threads,
+                args.gpu_lock,
+                Path(args.out or f"{name}-lomo.npz"),
+                stage=args.stage,
+                models=tuple(args.models.split(",")) if args.models else None,
+                worker=args.worker,
+                workers=args.workers,
+            )
+            return
+        plan = {
+            "stage": args.stage,
+            "models": tuple(args.models.split(",")) if args.models else None,
+            "worker": args.worker,
+            "workers": args.workers,
+        }
+    if build(cfg, out, args.device, args.threads, args.gpu_lock, plan) is None:
+        return
     report = validate_submission(out, raw_dir() / "sample_submission.csv")
     print("\n".join(report.lines()))
     sha = file_sha256(out)

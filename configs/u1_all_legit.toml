@@ -1,0 +1,5 @@
+# Upload 1: every October row labelled `legit` (a format check).
+name = "u1_all_legit"
+kind = "constant"
+label = "legit"
+expected_sha256 = "7a1c358e7e87db15662edc380b74f0757bec7782899a1d3f442308c26e6b2c72"

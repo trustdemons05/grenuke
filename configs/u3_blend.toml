@@ -1,0 +1,13 @@
+# Upload 3: the base recipe with XGBoost, LightGBM and CatBoost cascades (3 seeds each),
+# rank-averaged. Member order is part of the recipe (it fixes the summation order).
+extends = "base.toml"
+name = "u3_blend"
+expected_sha256 = "76a98d00fff2fb387139b94ea2df20509c1e3789245d6cbbcaa0f934145157a0"
+
+[cascade]
+members = [
+  { model = "xgboost", seeds = [0, 1, 2] },
+  { model = "lightgbm", seeds = [0, 1, 2] },
+  { model = "catboost", seeds = [0, 1, 2] },
+]
+blend = "rank"

@@ -1,0 +1,27 @@
+# Shared by the model configs: features, the cross-fitted fraud score, the cascade's target
+# recipe and the decoder. A config layers over this file with `extends = "base.toml"`.
+
+[features]
+# relational windows, then the label-free event families
+families = ["row", "sender", "receiver", "device", "pair", "flow",
+            "marks", "bots", "drain", "moneyflow", "collect", "rings", "repeat", "counter"]
+hygiene = true
+# event ids are identifiers, not measurements; the four row counts are left out by the recipe
+drop = ["bot_event", "drn_event", "mf_event", "col_event", "rng_event", "rep_event",
+        "ctr_dev_rows", "mrk_nb_s_rows", "mrk_nb_r_rows", "mrk_nb_d_rows"]
+
+[score]
+# cross-fitted binary P(fraud): XGBoost, leave-one-month-out, one seed
+rounds = 300
+eta = 0.08
+seed = 0
+
+[cascade]
+# fraud-labelled rows with score >= type_min_score train the type stage
+type_min_score = 0.10
+members = [{ model = "xgboost", seeds = [0, 1, 2] }]
+blend = "mean"
+
+[decode]
+fraud_scale = 0.875
+template_conf_min = 0.8

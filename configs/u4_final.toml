@@ -1,0 +1,13 @@
+# Upload 4 (final): upload 3's blend, with `ctr_dev_single` dropped from the matrix (so from the
+# fraud score and every member) and the type stage also trained on fraud-labelled rows with a
+# fraud score in [0.04, 0.10).
+extends = "u3_blend.toml"
+name = "u4_final"
+expected_sha256 = "a4777ded4eae11b7a9dc76ef68aa90390418e61f7701d50e0ffb7d35af765b97"
+
+[features]
+drop = ["bot_event", "drn_event", "mf_event", "col_event", "rng_event", "rep_event",
+        "ctr_dev_rows", "ctr_dev_single", "mrk_nb_s_rows", "mrk_nb_r_rows", "mrk_nb_d_rows"]
+
+[cascade]
+type_min_score = 0.04

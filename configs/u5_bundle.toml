@@ -1,0 +1,18 @@
+# Upload 5: the base recipe's XGBoost cascade with receiver / merchant pool columns, guarded
+# self-training on October's label-free events (2 rounds, event mean probability >= 0.9, events of
+# 2+ rows), 5 seeds, and one fraud type per template event (`grenuke.selftrain`).
+extends = "base.toml"
+name = "u5_bundle"
+kind = "selftrain"
+expected_sha256 = "75cb0899bfecde884b3132a2e5d8b20106587ab75c078f53286fa0ceebf85929"
+
+[cascade]
+members = [{ model = "xgboost", seeds = [0, 1, 2, 9, 10] }]
+
+[self_training]
+rounds = 2
+threshold = 0.9
+min_size = 2
+
+[decode]
+min_fraud_calls = 2

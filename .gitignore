@@ -1,0 +1,24 @@
+# competition data, caches and outputs never enter git
+data/
+cache/
+outputs/
+*.csv
+*.parquet
+*.npy
+*.npz
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+build/
+dist/
+
+# editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

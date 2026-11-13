@@ -49,9 +49,12 @@ def fit_xgboost(
     threads: int,
     rounds: int = 300,
     params: dict | None = None,
+    binary_params: dict | None = None,
+    type_params: dict | None = None,
 ) -> Predictor:
     """The XGBoost cascade on `rows`: binary stage on `rows` minus `drop_legit`, type stage on
-    `rows` and `type_rows`. `params` overrides the cascade's tree parameters (both stages)."""
+    `rows` and `type_rows`. `params` overrides the cascade's tree parameters in both stages;
+    `binary_params` / `type_params` override one stage."""
     n = y.shape[0]
     binary_rows = cc._exclude(rows, drop_legit, n)
     type_index = cc._intersect(rows, type_rows, n, name="type_rows")
@@ -59,9 +62,11 @@ def fit_xgboost(
     kept, weights = cc.downsample(target, binary_rows, majority=0, keep=1.0, seed=int(seed))
     common = {"device": device, "nthread": threads, "seed": seed}
     tree = {"eta": 0.08, "max_depth": 8, **(params or {})}
-    bp = cc._stage_params(tree, objective="binary:logistic", num_class=None, **common)
+    bp = {**tree, **(binary_params or {})}
+    bp = cc._stage_params(bp, objective="binary:logistic", num_class=None, **common)
     binary = cc._fit_matrix(x, target, kept, weights, params=bp, rounds=rounds, nthread=threads)
-    tp = cc._stage_params(tree, objective="multi:softprob", num_class=N_TYPES, **common)
+    tp = {**tree, **(type_params or {})}
+    tp = cc._stage_params(tp, objective="multi:softprob", num_class=N_TYPES, **common)
     typer = cc._fit_matrix(
         x,
         y - 1,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuild all four uploads into $OUT and check each against its expected sha256.
+# Rebuild all five uploads into $OUT and check each against its expected sha256.
 #   GRENUKE_DATA_DIR=/dir/holding/upi-fraud-rings GRENUKE_CACHE_DIR=/scratch/cache \
 #     OUT=/scratch/out bash scripts/reproduce.sh
 # The configs share the feature cache, the matrices, the fraud scores and the members, so the
@@ -12,7 +12,7 @@ PY=${PY:-python}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p "$OUT"
 export PYTHONPATH=$REPO/src${PYTHONPATH:+:$PYTHONPATH} PYTHONUNBUFFERED=1
-for name in u1_all_legit u2_base u3_blend u4_final; do
+for name in u1_all_legit u2_base u3_blend u4_final u5_bundle; do
   start=$(date +%s)
   "$PY" -m grenuke.build --config "$REPO/configs/$name.toml" --out "$OUT/$name.csv" \
     --device "${DEVICE:-cuda}" --threads "${THREADS:-6}" | tee "$OUT/$name.log"

@@ -41,6 +41,10 @@ def test_combine() -> None:
     np.testing.assert_allclose(rank.sum(1), 1.0, rtol=1e-9)
     # rank averaging only reorders each column's averaged values before renormalising
     assert rank.shape == mean.shape
+    np.testing.assert_allclose(combine(probs, "mean", [2, 2, 2]), mean, rtol=1e-12)
+    np.testing.assert_allclose(combine(probs, "rank", [1, 2, 3]).sum(1), 1.0, rtol=1e-9)
+    heavy = combine(probs, "mean", [1, 0, 0])
+    np.testing.assert_allclose(heavy, probs[0], rtol=1e-6)
 
 
 def test_decode_and_templates() -> None:

@@ -23,20 +23,22 @@ self-trained XGBoost recipe. `kind = "constant"` writes one label for every row.
 
 `--device cuda` (default) trains the fraud score, XGBoost and CatBoost on the GPU, which is the
 byte-reproducible path; LightGBM always runs on the CPU. `--device cpu` runs everything on the
-CPU (needs the CPU XGBoost wheel, see README) and gives a near-identical file. `--gpu-lock FILE`
-holds an exclusive `flock` on FILE around every GPU fit, so several builds can share one GPU.
+CPU (needs the CPU XGBoost wheel, see README) and gives a near-identical file. With
+`--gpu-lock FILE` every GPU step runs in its own process while an exclusive `flock` on FILE is
+held, so jobs that share a GPU through that lock never overlap (`grenuke.steps`).
 """
 
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import sys
 import time
 import tomllib
 from pathlib import Path
+
+from grenuke import steps
 
 EXPECTED_VERSIONS = {
     "xgboost": "3.4.1",
@@ -102,23 +104,6 @@ def _check_versions(cfg: dict, device: str) -> None:
             ) from error
 
 
-@contextlib.contextmanager
-def gpu_lock(path: str | None, device: str):
-    """An exclusive `flock` on `path` while a GPU fit runs (no-op on the CPU or without a path)."""
-    if device != "cuda" or not path:
-        yield
-        return
-    import fcntl  # Unix only
-
-    fd = os.open(path, os.O_RDONLY | os.O_CREAT, 0o666)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
-
-
 # -- shared steps ----------------------------------------------------------------------------
 
 
@@ -143,7 +128,7 @@ def test_ids(meta: dict):
 
 
 class Frame:
-    """A built matrix with its labels, months and leave-one-month-out folds."""
+    """A built matrix with its labels, months and leave-one-month-out folds (`x` loads lazily)."""
 
     def __init__(self, features: dict):
         import numpy as np
@@ -151,8 +136,11 @@ class Frame:
         from grenuke import matrix
         from grenuke.models.cascade import month_splits
 
+        self.features = features
         self.folder = matrix.build(features)
-        self.x, self.meta = matrix.load(self.folder)
+        self._x = None
+        meta_file = np.load(self.folder / "meta.npz")
+        self.meta = {k: meta_file[k] for k in meta_file.files}
         self.y = self.meta["y"].astype(np.int64)
         self.month = self.meta["month"].astype(np.int64)
         self.is_test = self.meta["is_test"].astype(bool)
@@ -162,76 +150,158 @@ class Frame:
         self.train_rows = np.flatnonzero(self.trainable)
         self.test_rows = np.flatnonzero(self.is_test)
 
+    @property
+    def x(self):
+        import numpy as np
 
-def fraud_score(frame: Frame, spec: dict, device: str, threads: int, lock: str | None):
-    """The cross-fitted P(fraud) of every train row (NaN on test rows), cached; and its path."""
+        if self._x is None:
+            self._x = np.load(self.folder / "x.npy")
+        return self._x
+
+
+_FRAMES: dict[str, Frame] = {}
+
+
+def frame_of(features: dict) -> Frame:
+    """The `Frame` of a features section, kept for the next step of this process."""
+    from grenuke.matrix import key_of
+
+    k = key_of(features)
+    if k not in _FRAMES:
+        _FRAMES.clear()
+        _FRAMES[k] = Frame(features)
+    return _FRAMES[k]
+
+
+def targets(frame: Frame, score, floor: float, unrep: float):
+    """Rows the type stage trains on, and legit-labelled rows off the binary stage's legit side."""
     import numpy as np
 
+    from grenuke.models.cascade import drop_legit_mask
+
+    type_rows = (frame.y_fit > 0) & (np.nan_to_num(score, nan=0.0) >= floor)
+    drop_legit = drop_legit_mask(frame.y_fit, score, threshold=unrep) & frame.trainable
+    return type_rows, drop_legit
+
+
+def score_step(features: dict, spec: dict, device: str, threads: int, path: str) -> None:
+    """The cross-fitted P(fraud) of every train row (NaN on test rows)."""
     from grenuke.models.cascade import cross_fitted_fraud_score
 
+    frame = frame_of(features)
+    score = cross_fitted_fraud_score(
+        frame.x,
+        frame.y_fit,
+        frame.splits,
+        rounds=int(spec.get("rounds", 300)),
+        seeds=(int(spec.get("seed", 0)),),
+        device=device,
+        nthread=threads,
+        params={"eta": float(spec.get("eta", 0.08))},
+    )
+    steps.save(path, score)
+
+
+def fraud_score(frame: Frame, spec: dict, device: str, threads: int, lock: str | None):
+    """The cached fraud score and its path."""
+    import numpy as np
+
     path = frame.folder / f"score-{key(spec, device)}.npy"
-    if path.exists():
-        return np.load(path), path
-    started = time.perf_counter()
-    with gpu_lock(lock, device):
-        score = cross_fitted_fraud_score(
-            frame.x,
-            frame.y_fit,
-            frame.splits,
-            rounds=int(spec.get("rounds", 300)),
-            seeds=(int(spec.get("seed", 0)),),
-            device=device,
-            nthread=threads,
-            params={"eta": float(spec.get("eta", 0.08))},
+    if not path.exists():
+        started = time.perf_counter()
+        kwargs = {"features": frame.features, "spec": spec, "device": device, "threads": threads}
+        steps.run(
+            "grenuke.build:score_step", kwargs | {"path": str(path)}, device=device, lock=lock
         )
-    np.save(path, score)
-    print(f"   fraud score ({device}) in {time.perf_counter() - started:.0f}s", flush=True)
-    return score, path
+        print(f"   fraud score ({device}) in {time.perf_counter() - started:.0f}s", flush=True)
+    return np.load(path), path
 
 
 # -- the blend -------------------------------------------------------------------------------
 
 
-def _members(frame: Frame, casc: dict, score, score_path: Path, device, threads, lock):
-    """Every member's (out-of-fold, test) probabilities, in config order, seeds in order."""
+MEMBER_OPTIONS = ("rounds", "params", "binary_params", "type_params")
+TARGET_OPTIONS = ("type_min_score", "unreported_threshold")
+
+
+def member_step(
+    features: dict,
+    score_path: str,
+    floor: float,
+    unrep: float,
+    model: str,
+    seed: int,
+    device: str,
+    threads: int,
+    stem: str,
+    options: dict,
+) -> None:
+    """One member, leave-one-month-out: `<stem>-oof.npy` and `<stem>-test.npy`."""
     import numpy as np
 
-    from grenuke.models.cascade import drop_legit_mask
     from grenuke.models.members import fit_lomo
 
+    frame = frame_of(features)
+    type_rows, drop_legit = targets(frame, np.load(score_path), floor, unrep)
+    oof, test = fit_lomo(
+        model,
+        frame.x,
+        frame.y_fit,
+        frame.splits,
+        frame.test_rows,
+        type_rows=type_rows,
+        drop_legit=drop_legit,
+        seed=int(seed),
+        device=device,
+        threads=threads,
+        **options,
+    )
+    steps.save(f"{stem}-oof.npy", oof)
+    steps.save(f"{stem}-test.npy", test)
+
+
+def _members(frame: Frame, casc: dict, score_path: Path, device, threads, lock):
+    """Every member's (out-of-fold, test) probabilities, in config order, seeds in order.
+
+    A member may override the cascade's `type_min_score` and `unreported_threshold` (the fraud
+    score at or above which legit-labelled rows leave the binary stage's legit side, 0.70), and
+    set `rounds`, `params` (both XGBoost stages), `binary_params` and `type_params`."""
+    import numpy as np
+
+    from grenuke.models.cascade import UNREPORTED_THRESHOLD
+
     floor = float(casc["type_min_score"])
-    type_rows = (frame.y_fit > 0) & (np.nan_to_num(score, nan=0.0) >= floor)
-    drop_legit = drop_legit_mask(frame.y_fit, score) & frame.trainable
+    unrep = float(casc.get("unreported_threshold", UNREPORTED_THRESHOLD))
     folder = frame.folder / "members" / f"{score_path.stem}-floor{floor:g}"
+    if unrep != UNREPORTED_THRESHOLD:
+        folder = folder.with_name(f"{folder.name}-unrep{unrep:g}")
     folder.mkdir(parents=True, exist_ok=True)
     oofs, tests = [], []
     for spec in casc["members"]:
         model = spec["model"]
         dev = "cpu" if model == "lightgbm" else device
-        options = {k: spec[k] for k in ("rounds", "params") if k in spec}
-        tag = f"-{key(options)}" if options else ""
+        options = {k: spec[k] for k in MEMBER_OPTIONS if k in spec}
+        tagged = options | {k: spec[k] for k in TARGET_OPTIONS if k in spec}
+        tag = f"-{key(tagged)}" if tagged else ""
         for seed in spec["seeds"]:
             stem = folder / f"{model}{tag}-{dev}-s{seed}"
             oof_path, test_path = Path(f"{stem}-oof.npy"), Path(f"{stem}-test.npy")
             if not (oof_path.exists() and test_path.exists()):
                 print(f"== member {model}{tag} seed {seed} ({dev})", flush=True)
                 started = time.perf_counter()
-                with gpu_lock(lock, dev):
-                    oof, test = fit_lomo(
-                        model,
-                        frame.x,
-                        frame.y_fit,
-                        frame.splits,
-                        frame.test_rows,
-                        type_rows=type_rows,
-                        drop_legit=drop_legit,
-                        seed=int(seed),
-                        device=dev,
-                        threads=threads,
-                        **options,
-                    )
-                np.save(oof_path, oof)
-                np.save(test_path, test)
+                kwargs = {
+                    "features": frame.features,
+                    "score_path": str(score_path),
+                    "floor": float(spec.get("type_min_score", floor)),
+                    "unrep": float(spec.get("unreported_threshold", unrep)),
+                    "model": model,
+                    "seed": int(seed),
+                    "device": dev,
+                    "threads": threads,
+                    "stem": str(stem),
+                    "options": options,
+                }
+                steps.run("grenuke.build:member_step", kwargs, device=dev, lock=lock)
                 print(f"   {time.perf_counter() - started:.0f}s", flush=True)
             oofs.append(np.load(oof_path))
             tests.append(np.load(test_path))
@@ -247,12 +317,12 @@ def blend(cfg: dict, device: str, threads: int, lock: str | None):
     from grenuke.templates import template_rule
 
     print("== features and matrix", flush=True)
-    frame = Frame(cfg["features"])
+    frame = frame_of(cfg["features"])
     print("== cross-fitted fraud score", flush=True)
-    score, score_path = fraud_score(frame, cfg["score"], device, threads, lock)
+    _, score_path = fraud_score(frame, cfg["score"], device, threads, lock)
     casc = cfg["cascade"]
-    oofs, tests = _members(frame, casc, score, score_path, device, threads, lock)
-    del frame.x
+    oofs, tests = _members(frame, casc, score_path, device, threads, lock)
+    _FRAMES.clear()
 
     method = casc.get("blend", "mean")
     weights = None
@@ -328,7 +398,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", default=None, help="output CSV (default: <config name>.csv)")
     parser.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
     parser.add_argument("--threads", type=int, default=6, help="threads per library (default 6)")
-    parser.add_argument("--gpu-lock", default=None, help="flock this file around GPU fits")
+    parser.add_argument(
+        "--gpu-lock", default=None, help="run each GPU step in its own process under flock(FILE)"
+    )
     args = parser.parse_args(argv)
     _cap_threads(args.threads)
 

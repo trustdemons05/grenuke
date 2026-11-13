@@ -24,7 +24,8 @@ from pathlib import Path
 
 import numpy as np
 
-from grenuke.build import Frame, gpu_lock, key
+from grenuke import steps
+from grenuke.build import frame_of, key, targets
 
 
 def pseudo_labels(
@@ -79,119 +80,159 @@ def _pools(months: tuple[int, ...]) -> tuple[dict[int, np.ndarray], np.ndarray]:
     return out, full
 
 
+def _months(frame) -> tuple[int, ...]:
+    return tuple(int(np.unique(frame.month[s.valid])[0]) for s in frame.splits)
+
+
+def _with_pools(frame, pool_x: np.ndarray, pool_all: np.ndarray | None = None) -> np.ndarray:
+    """The matrix with pool columns; October rows read `pool_all` (the full history) if given."""
+    x = np.hstack([frame.x, pool_x])
+    if pool_all is not None:
+        x[frame.test_rows, x.shape[1] - pool_all.shape[1] :] = pool_all[frame.test_rows]
+    return x
+
+
+def pool_score_step(features: dict, spec: dict, device: str, threads: int, path: str) -> None:
+    """The cross-fitted fraud score with pool columns, one held-out month at a time: the fold
+    that leaves month m out reads pools built without month m's labels."""
+    from grenuke.models.cascade import cross_fitted_fraud_score
+
+    frame = frame_of(features)
+    pool_x, _ = _pools(_months(frame))
+    score = np.full(frame.y.shape[0], np.nan, dtype=np.float32)
+    for split, m in zip(frame.splits, _months(frame), strict=True):
+        part = cross_fitted_fraud_score(
+            _with_pools(frame, pool_x[m]),
+            frame.y_fit,
+            [split],
+            rounds=int(spec.get("rounds", 300)),
+            seeds=(int(spec.get("seed", 0)),),
+            device=device,
+            nthread=threads,
+            params={"eta": float(spec.get("eta", 0.08))},
+        )
+        score[split.valid] = part[split.valid]
+    steps.save(path, score)
+
+
+def fit_step(
+    features: dict,
+    score_path: str,
+    floor: float,
+    st: dict,
+    options: dict,
+    month: int,
+    seed: int,
+    device: str,
+    threads: int,
+    out: str,
+) -> None:
+    """The fold model that leaves `month` out, self-trained `st["rounds"]` times; its October
+    probabilities after the last round go to `out`."""
+    from grenuke.models.cascade import UNREPORTED_THRESHOLD
+    from grenuke.models.members import fit_xgboost
+
+    frame = frame_of(features)
+    pool_x, pool_all = _pools(_months(frame))
+    x = _with_pools(frame, pool_x[month], pool_all)  # training rows: the fold's pools
+    type_rows, drop_legit = targets(frame, np.load(score_path), floor, UNREPORTED_THRESHOLD)
+    y_fit = frame.y_fit
+    target = frame.test_rows
+    x_target = np.ascontiguousarray(x[target])
+    groups = frame.meta["group"][target]
+    train = np.flatnonzero(frame.trainable & (frame.month != month))
+    rows, labels, t_rows, d_legit = train, y_fit, type_rows, drop_legit
+    prob = np.zeros((0, 12), dtype=np.float32)
+    for rnd in range(int(st["rounds"]) + 1):
+        if rnd > 0:  # the previous round's October predictions pick this round's pseudo-labels
+            pos, cls = pseudo_labels(
+                prob, groups, threshold=float(st["threshold"]), min_size=int(st["min_size"])
+            )
+            picked = target[pos]
+            labels = y_fit.copy()
+            labels[picked] = cls
+            t_rows = type_rows.copy()
+            t_rows[picked] = True
+            d_legit = drop_legit.copy()
+            d_legit[picked] = False
+            rows = np.concatenate([train, picked])
+            print(f"   round {rnd}: {picked.size:,} pseudo-labelled rows", flush=True)
+        predict = fit_xgboost(
+            x,
+            labels,
+            rows,
+            type_rows=t_rows,
+            drop_legit=d_legit,
+            seed=int(seed),
+            device=device,
+            threads=threads,
+            **options,
+        )
+        prob = predict(x_target).astype(np.float32)
+        del predict
+    steps.save(out, prob)
+
+
 def selftrain(cfg: dict, device: str, threads: int, lock: str | None):
     from grenuke.decode import fixed_point, unify_types
-    from grenuke.models.cascade import cross_fitted_fraud_score, drop_legit_mask
-    from grenuke.models.members import fit_xgboost
     from grenuke.templates import template_rule
 
     print("== features and matrix", flush=True)
-    frame = Frame(cfg["features"])
-    months = tuple(int(np.unique(frame.month[s.valid])[0]) for s in frame.splits)
+    features = cfg["features"]
+    frame = frame_of(features)
+    months = _months(frame)
     print("== pool columns", flush=True)
-    pool_x, pool_all = _pools(months)
-    npool = pool_all.shape[1]
+    _pools(months)
 
     print("== cross-fitted fraud score with pools", flush=True)
     spec = cfg["score"]
-    path = frame.folder / f"score-pools-{key(spec, device)}.npy"
-    if path.exists():
-        score = np.load(path)
-    else:
+    score_path = frame.folder / f"score-pools-{key(spec, device)}.npy"
+    if not score_path.exists():
         started = time.perf_counter()
-        score = np.full(frame.x.shape[0], np.nan, dtype=np.float32)
-        for split, m in zip(frame.splits, months, strict=True):
-            xs = np.hstack([frame.x, pool_x[m]])
-            with gpu_lock(lock, device):
-                part = cross_fitted_fraud_score(
-                    xs,
-                    frame.y_fit,
-                    [split],
-                    rounds=int(spec.get("rounds", 300)),
-                    seeds=(int(spec.get("seed", 0)),),
-                    device=device,
-                    nthread=threads,
-                    params={"eta": float(spec.get("eta", 0.08))},
-                )
-            score[split.valid] = part[split.valid]
-            del xs
-        np.save(path, score)
+        kwargs = {"features": features, "spec": spec, "device": device, "threads": threads}
+        kwargs["path"] = str(score_path)
+        steps.run("grenuke.selftrain:pool_score_step", kwargs, device=device, lock=lock)
         print(f"   {time.perf_counter() - started:.0f}s", flush=True)
 
     casc, st = cfg["cascade"], cfg["self_training"]
     (member,) = casc["members"]  # one XGBoost member, several seeds
     if member["model"] != "xgboost":
         raise SystemExit("the self-training recipe takes one xgboost member")
-    rounds = int(st["rounds"])
     floor = float(casc["type_min_score"])
-    y_fit, trainable = frame.y_fit, frame.trainable
-    type_rows = (y_fit > 0) & (np.nan_to_num(score, nan=0.0) >= floor)
-    drop_legit = drop_legit_mask(y_fit, score) & trainable
-    target = frame.test_rows
-    groups = frame.meta["group"][target]
-    options = {k: member[k] for k in ("rounds", "params") if k in member}
-    folder = frame.folder / "selftrain" / key(path.stem, floor, st, options)
+    options = {
+        k: member[k] for k in ("rounds", "params", "binary_params", "type_params") if k in member
+    }
+    folder = frame.folder / "selftrain" / key(score_path.stem, floor, st, options)
     folder.mkdir(parents=True, exist_ok=True)
-
     probs: dict[tuple[int, int], np.ndarray] = {}
     for m in months:
-        x = None
-        train = np.flatnonzero(trainable & (frame.month != m))
         for seed in member["seeds"]:
-            out = Path(folder / f"s{seed}-m{m}-r{rounds}.npy")
-            if out.exists():
-                probs[seed, m] = np.load(out)
-                continue
-            if x is None:  # training rows read the fold's pools, October the full history
-                x = np.hstack([frame.x, pool_x[m]])
-                x[target, x.shape[1] - npool :] = pool_all[target]
-                x_target = np.ascontiguousarray(x[target])
-            print(f"== fold {m} seed {seed}, {rounds} self-training rounds", flush=True)
-            started = time.perf_counter()
-            rows, labels, t_rows, d_legit = train, y_fit, type_rows, drop_legit
-            prob = np.zeros((0, 12), dtype=np.float32)
-            for rnd in range(rounds + 1):
-                if rnd > 0:  # the previous round's October predictions pick the pseudo-labels
-                    pos, cls = pseudo_labels(
-                        prob,
-                        groups,
-                        threshold=float(st["threshold"]),
-                        min_size=int(st["min_size"]),
-                    )
-                    picked = target[pos]
-                    labels = y_fit.copy()
-                    labels[picked] = cls
-                    t_rows = type_rows.copy()
-                    t_rows[picked] = True
-                    d_legit = drop_legit.copy()
-                    d_legit[picked] = False
-                    rows = np.concatenate([train, picked])
-                    print(f"   round {rnd}: {picked.size:,} pseudo-labelled rows", flush=True)
-                with gpu_lock(lock, device):
-                    predict = fit_xgboost(
-                        x,
-                        labels,
-                        rows,
-                        type_rows=t_rows,
-                        drop_legit=d_legit,
-                        seed=int(seed),
-                        device=device,
-                        threads=threads,
-                        **options,
-                    )
-                    prob = predict(x_target).astype(np.float32)
-                del predict
-            np.save(out, prob)
-            probs[seed, m] = prob
-            print(f"   {time.perf_counter() - started:.0f}s", flush=True)
-        del x
-    del frame.x
+            out = Path(folder / f"s{seed}-m{m}-r{int(st['rounds'])}.npy")
+            if not out.exists():
+                print(f"== fold {m} seed {seed}, {st['rounds']} self-training rounds", flush=True)
+                started = time.perf_counter()
+                kwargs = {
+                    "features": features,
+                    "score_path": str(score_path),
+                    "floor": floor,
+                    "st": st,
+                    "options": options,
+                    "month": int(m),
+                    "seed": int(seed),
+                    "device": device,
+                    "threads": threads,
+                    "out": str(out),
+                }
+                steps.run("grenuke.selftrain:fit_step", kwargs, device=device, lock=lock)
+                print(f"   {time.perf_counter() - started:.0f}s", flush=True)
+            probs[seed, m] = np.load(out)
 
     print("== decode", flush=True)
     arrays = [probs[s, m].astype(np.float64) for s in member["seeds"] for m in months]
     prob = (sum(arrays) / len(arrays)).astype(np.float32)
     dec = cfg["decode"]
     meta = frame.meta
+    target = frame.test_rows
     scale = float(dec["fraud_scale"])
     pred = fixed_point(np.nan_to_num(prob.astype(np.float64)), fraud_scale=scale).pred
     events = meta["events"][target]

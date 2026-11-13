@@ -1,0 +1,28 @@
+# u8 (every small gain at once): upload 5's self-training recipe (pool columns, guarded
+# self-training on October's label-free events, one fraud type per event) with upload 4's three
+# learners rank-averaged (XGBoost seeds 0, 1, 2, 9, 10 as in upload 5; LightGBM and CatBoost seeds
+# 0-2 as in upload 4; every fold model of every member self-trained on its own predictions),
+# upload 4's two changes (`ctr_dev_single` dropped, `type_min_score = 0.04`) and `ctr_pos` dropped
+# too, from the matrix (so from the fraud score and every member).
+#
+# Blend weights: the three learner families weigh equally (1/3 each), as in upload 4 where every
+# family has 3 seeds. A member's `weight` applies to each of its seed arrays and the weights are
+# normalised, so XGBoost's 5 arrays get 3/45 = 1/15 each and LightGBM's and CatBoost's 3 arrays
+# 5/45 = 1/9 each.
+extends = "u5_bundle.toml"
+name = "u8_all"
+expected_sha256 = "cdd60cba15b4a87a0684fcb69ef64a2bd06ef069a86dbc2c29afcf5e92ff260c"
+
+[features]
+drop = ["bot_event", "drn_event", "mf_event", "col_event", "rng_event", "rep_event",
+        "ctr_dev_rows", "ctr_dev_single", "ctr_pos", "mrk_nb_s_rows", "mrk_nb_r_rows",
+        "mrk_nb_d_rows"]
+
+[cascade]
+type_min_score = 0.04
+members = [
+  { model = "xgboost", seeds = [0, 1, 2, 9, 10], weight = 3 },
+  { model = "lightgbm", seeds = [0, 1, 2], weight = 5 },
+  { model = "catboost", seeds = [0, 1, 2], weight = 5 },
+]
+blend = "rank"

@@ -1,0 +1,14 @@
+# u9: upload 5 exactly (one XGBoost member, seeds 0, 1, 2, 9, 10, pool columns, guarded
+# self-training, one fraud type per event), with `ctr_dev_single` and `ctr_pos` dropped from the
+# matrix (so from the fraud score and the member) and `type_min_score = 0.04`.
+extends = "u5_bundle.toml"
+name = "u9_u5tweaks"
+expected_sha256 = "0be278890baf4d23568f0d1f7323d7bb4ed640a510002f898ca4709d8f677ad8"
+
+[features]
+drop = ["bot_event", "drn_event", "mf_event", "col_event", "rng_event", "rep_event",
+        "ctr_dev_rows", "ctr_dev_single", "ctr_pos", "mrk_nb_s_rows", "mrk_nb_r_rows",
+        "mrk_nb_d_rows"]
+
+[cascade]
+type_min_score = 0.04

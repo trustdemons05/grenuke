@@ -21,6 +21,9 @@ Steps (each cached under $GRENUKE_CACHE_DIR, so configs that share a step share 
 `kind = "selftrain"` configs (`grenuke.selftrain`) replace steps 3-6 with the pooled,
 self-trained XGBoost recipe. `kind = "constant"` writes one label for every row.
 
+An optional `[post]` table applies `grenuke.post.post_rule` to the October labels before they are
+written (u9_p4).
+
 `--device cuda` (default) trains the fraud score, XGBoost and CatBoost on the GPU, which is the
 byte-reproducible path; LightGBM always runs on the CPU. `--device cpu` runs everything on the
 CPU (needs the CPU XGBoost wheel, see README) and gives a near-identical file. With
@@ -397,6 +400,10 @@ def build(
             return None
     else:
         raise SystemExit(f"unknown kind {kind!r}")
+    if "post" in cfg:
+        from grenuke.post import post_rule
+
+        pred = post_rule(cfg, pred, meta)
     write_csv(test_ids(meta), np.array(LABELS)[pred], out)
     calls = np.bincount(pred, minlength=len(LABELS))
     print("   test calls:", json.dumps({LABELS[k]: int(v) for k, v in enumerate(calls)}))

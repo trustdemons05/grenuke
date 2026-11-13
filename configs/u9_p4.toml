@@ -1,0 +1,10 @@
+# u9-p4: u9 (`u9_u5tweaks.toml`) with one post rule on its October labels: first-time
+# (`new_payee` 1) P2P PAY rows of whole rupees that are not a multiple of 10 and at least 1,000,
+# called legit, become phishing_collect (no probability or event condition).
+extends = "u9_u5tweaks.toml"
+name = "u9_p4"
+expected_sha256 = "15f6c2b19136c57392d8026b51c6a95c73bd07c6a50d86f47d6e5c302920b62b"
+
+[post]
+pay_p2p_label = "phishing_collect"
+pay_p2p_min_amount = 1000.0

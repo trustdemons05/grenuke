@@ -88,34 +88,44 @@ Smoke test (no data, no GPU, a few seconds): `python -m pytest`.
 
 ## Reproducibility
 
-Rebuilt from a fresh clone on one RTX 5060 Ti 16 GB (GPU path, 6 threads per process, GPU shared
-with other jobs through `--gpu-lock`), against the uploaded files:
+Rebuilt from a fresh clone on one RTX 5060 Ti 16 GB (`--device cuda`, 6 threads per process),
+with the GPU shared with other jobs through `--gpu-lock`, and compared with the uploaded files:
 
-| # | config | result | build time |
-|---|---|---|---|
-VERIFY_TABLE
+| # | config | result |
+|---|---|---|
+| 1 | `u1_all_legit` | identical sha256 |
+| 2 | `u2_base` | identical sha256 |
+| 3 | `u3_blend` | 2 of 260,582 rows differ (CatBoost, see below) |
+| 4 | `u4_final` | 1 of 260,582 rows differs (CatBoost, see below) |
+| 5 | `u5_bundle` | identical sha256 |
+| 6 | `u6_probmean` | identical sha256 |
+| 7 | `u7_xgb_c1` | identical sha256 |
 
 What is and is not byte-reproducible:
 
-- **Features, matrices and the fraud score** are deterministic: rebuilt bitwise, at any polars
-  thread count. LightGBM runs in deterministic mode and does not depend on the thread count.
-- **XGBoost on the GPU** (`hist`, CUDA) is bitwise identical across runs and across GPU models
-  (an A100 and an RTX 5060 Ti gave the same boosters' predictions). Uploads 1, 2 and 5 use only
-  XGBoost, so the GPU path rebuilds them byte for byte.
-- **CatBoost on the GPU is not deterministic.** Two fits with the same data, seed and settings on
-  the same GPU differ by up to 0.035 in probability, and `thread_count` changes the result too.
-  Uploads 3 and 4 blend three CatBoost members, so a rebuild differs from the uploaded file in a
-  handful of October rows (the table above), which is seed-level noise: two disjoint 3-seed bags
-  of the same recipe disagree on about 13 rows. The uploaded files were built with CatBoost on
-  12-vCPU cloud GPU machines (A100 / L4) with `thread_count = -1`.
+- **Features, matrices, pool columns and fraud scores** are deterministic and were rebuilt
+  bitwise. LightGBM runs in deterministic mode and does not depend on the thread count.
+- **XGBoost on the GPU** (`hist`, CUDA) is bitwise identical across runs and across GPU models: the
+  rebuilt XGBoost and LightGBM members of uploads 3 and 4 equal the uploaded runs' members
+  (built on A100 / L4 cloud GPUs) bit for bit. Uploads 1, 2 and 5 use no CatBoost, so the GPU path
+  rebuilds them byte for byte.
+- **CatBoost on the GPU is not deterministic.** Repeated fits with the same data, seed and
+  settings differ by up to 0.035 in probability, and from the uploaded runs' members by up to
+  0.10. Uploads 3 and 4 rank-average three CatBoost members, so a rebuild can move a row or two:
+  2 rows for upload 3 and 1 row for upload 4 here, another rebuild of upload 4 matched exactly.
+  Two disjoint 3-seed bags of the same recipe disagree on about 13 rows, so this is well inside
+  seed noise. With the uploaded runs' CatBoost probabilities in place of the rebuilt ones, this
+  code reproduces upload 4 byte for byte, and its decoder turns upload 3's blend into upload 3
+  byte for byte. Uploads 6 and 7 use the same rebuilt CatBoost members and still match exactly.
 - **CPU path** (`--device cpu`): XGBoost's CPU algorithm differs from its GPU one, so an all-CPU
-  build of upload 4 differs from the uploaded file in about 10 rows. It is deterministic run to
-  run with the same wheel. The CUDA wheel of XGBoost 3.4.1 cannot train the multi-class stage
-  without a visible GPU; install `xgboost-cpu==3.4.1` instead (the build checks this and says so).
-  The CUDA wheel's CPU path and the `xgboost-cpu` wheel do not give identical fraud scores, so CPU
-  results depend on the wheel.
+  build of upload 4 differs from the uploaded file in 3 rows with the `xgboost-cpu` wheel (10 with
+  the CUDA wheel's CPU path). It is deterministic run to run with the same wheel. The CUDA wheel
+  of XGBoost 3.4.1 cannot train the multi-class stage without a visible GPU; install
+  `xgboost-cpu==3.4.1` instead (the build checks this and says so).
 
-Times: one upload of the blend recipe trains 1 fraud score and 9 members (each three fold models)
-in about T_BLEND on the GPU above; upload 5 trains 15 fold models with two self-training refits
-each in about T_U5. A cold cache adds about 3 minutes of ingest and features. Peak memory is about
-20 GB of RAM and, for CatBoost, most of the GPU's memory.
+Wall time of the run above, with three builds side by side on the shared GPU (so mostly queueing
+for it): upload 2 from a cold cache about 12 minutes (ingest and features about 3 of them);
+then upload 3 in 35 minutes, upload 4 in 55 minutes (its own matrix, fraud score and 9 members)
+and upload 5 in 73 minutes (15 fold models with two self-training refits each); uploads 6 and 7
+after upload 4 in 10 seconds and 16 minutes. Each build process used under 10 GB of RAM; CatBoost
+takes most of the GPU's memory while it trains.

@@ -4,6 +4,27 @@ Rebuilds our submissions to the **UPI Fraud Rings** problem from the raw competi
 The task: label each of the 260,582 October UPI transactions as `legit` or one of 11 fraud types,
 scored by macro-F1 over the 12 classes.
 
+## Final submission
+
+Our best public score, **0.5497131249271773**, is shared exactly by two uploads, so either may be
+the one scored on the private set. Both rebuild byte for byte from this repository:
+
+| upload | config | build command | expected sha256 |
+|---|---|---|---|
+| 9 | `configs/u9_u5tweaks.toml` | `python -m grenuke.build --config configs/u9_u5tweaks.toml --out u9.csv` | `0be278890baf4d23568f0d1f7323d7bb4ed640a510002f898ca4709d8f677ad8` |
+| 10 | `configs/u9_p4.toml` | `python -m grenuke.build --config configs/u9_p4.toml --out u9_p4.csv` | `15f6c2b19136c57392d8026b51c6a95c73bd07c6a50d86f47d6e5c302920b62b` |
+
+- **Upload 9** is the self-training recipe of upload 5, with `ctr_dev_single` and `ctr_pos`
+  dropped and `type_min_score = 0.04`. Its only member is XGBoost, so it is bitwise reproducible
+  on the GPU path.
+- **Upload 10** is upload 9 plus one post rule on its labels (`grenuke.post`): first-time P2P `PAY`
+  rows of whole rupees that are not a multiple of 10 and at least 1,000, called legit, become
+  `phishing_collect`.
+- **Reproduction check:** both were rebuilt from a fresh clone on an RTX 5060 Ti and matched the
+  uploaded files exactly. The uploaded files were built on an A100.
+- **Versions** are pinned in `requirements.txt` (CPython 3.13, xgboost 3.4.1, numpy 2.5.4,
+  polars 2.1.0). See Setup and Reproducibility below.
+
 ## Method
 
 1. **Features** (`grenuke.features`), computed on train and test stacked, never reading a label:
@@ -23,7 +44,7 @@ scored by macro-F1 over the 12 classes.
 4. **Decoding** (`grenuke.decode`, `grenuke.templates`): a label-free fixed point that maximises
    expected macro-F1 on each month, then a rule that gives look-alike event shapes one class,
    anchored on the device counter's segments.
-5. **Self-training recipe** (`grenuke.selftrain`, upload 5 only): receiver pool features built from
+5. **Self-training recipe** (`grenuke.selftrain`, uploads 5, 9 and 10): receiver pool features built from
    other months' labels, two rounds of guarded self-training on October's own high-confidence
    events (no hand labels), five seeds, and one fraud type per event.
 
@@ -38,8 +59,14 @@ scored by macro-F1 over the 12 classes.
 | 5 | `configs/u5_bundle.toml` | 0.5488 | `75cb0899bfecde884b3132a2e5d8b20106587ab75c078f53286fa0ceebf85929` |
 | 6 | `configs/u6_probmean.toml` | 0.5488 | `c87cbd793e3a49d1982c9db518cd62d3bf126a532fb74081a7164503bd2a835c` |
 | 7 | `configs/u7_xgb_c1.toml` | 0.5488 | `ae21f1eac5798ae33034481f22eba9fc1ceec4d2b1b8590d1195b93005c72a65` |
+| 9 | `configs/u9_u5tweaks.toml` | 0.5497 | `0be278890baf4d23568f0d1f7323d7bb4ed640a510002f898ca4709d8f677ad8` |
+| 10 | `configs/u9_p4.toml` | 0.5497 | `15f6c2b19136c57392d8026b51c6a95c73bd07c6a50d86f47d6e5c302920b62b` |
 
-Uploads 4 to 7 tie on the public board; the board marks upload 5 as the pick. Configs layer:
+- **Ties:** uploads 4 to 7 tie with each other, and uploads 9 and 10 tie exactly; the latter pair is
+  our best.
+- **Not listed:** uploads that scored below the final and are not needed to rebuild it (for
+  example upload 8, five seeds per member of upload 4, which scored the same as upload 4).
+- **How the configs layer:**
 `u2_base` is `configs/base.toml`; `u3_blend` adds the LightGBM and CatBoost members; `u4_final`
 is `u3_blend` with `ctr_dev_single` dropped and `type_min_score = 0.04`; `u6_probmean` and
 `u7_xgb_c1` change one thing each in `u4_final` (probability mean; a tuned XGBoost member).
@@ -100,6 +127,8 @@ with the GPU shared with other jobs through `--gpu-lock`, and compared with the 
 | 5 | `u5_bundle` | identical sha256 |
 | 6 | `u6_probmean` | identical sha256 |
 | 7 | `u7_xgb_c1` | identical sha256 |
+| 9 | `u9_u5tweaks` | identical sha256 (fresh clone at `3827f11`) |
+| 10 | `u9_p4` | identical sha256 (fresh clone at `3827f11`) |
 
 What is and is not byte-reproducible:
 

@@ -17,7 +17,15 @@ from grenuke.models.members import combine, fit_lomo
 from grenuke.templates import template_rule
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
-UPLOADS = ("u1_all_legit", "u2_base", "u3_blend", "u4_final", "u5_bundle")
+UPLOADS = (
+    "u1_all_legit",
+    "u2_base",
+    "u3_blend",
+    "u4_final",
+    "u5_bundle",
+    "u6_probmean",
+    "u7_xgb_c1",
+)
 
 
 def test_configs_layer() -> None:

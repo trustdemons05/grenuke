@@ -4,6 +4,8 @@ Every member is the cascade of `grenuke.models.cascade` (P(fraud) x P(type | fra
 stage leaves out `drop_legit` rows, the type stage trains on `type_rows`) with its own learner:
 
 - `xgboost`: the cascade's own XGBoost stages (same params, downsampling and matrices);
+- `xgboost_tuned`: XGBoost stages from a tuned setting (per-stage trees and rounds, class and
+  fraud weights, legit downsampling);
 - `lightgbm`: LightGBM stages, CPU, 300 rounds at 0.05, deterministic mode;
 - `catboost`: CatBoost stages, depth 8, 300 iterations at 0.08 (GPU when the device is cuda).
 
@@ -74,6 +76,99 @@ def fit_xgboost(
         np.ones(type_index.size, dtype=np.float32),
         params=tp,
         rounds=rounds,
+        nthread=threads,
+    )
+
+    def predict(block: np.ndarray) -> np.ndarray:
+        p = cc._score(binary, block, nthread=threads)
+        q = cc._score(typer, block, nthread=threads)
+        return _product(p, q)
+
+    return predict
+
+
+def _tuned_stage(hp: dict, which: str, objective: str, seed, device, threads, num_class=None):
+    """One stage's XGBoost params from a tuned setting (keys `<b|t>_<name>`)."""
+    p = {
+        "tree_method": "hist",
+        "verbosity": 0,
+        "eta": float(hp[f"{which}_eta"]),
+        "max_depth": int(hp[f"{which}_depth"]),
+        "min_child_weight": float(hp[f"{which}_mcw"]),
+        "subsample": float(hp[f"{which}_subsample"]),
+        "colsample_bytree": float(hp[f"{which}_colsample"]),
+        "lambda": float(hp[f"{which}_lambda"]),
+        "max_bin": int(hp[f"{which}_max_bin"]),
+        "objective": objective,
+        "device": device,
+        "seed": int(seed),
+        "nthread": int(threads),
+    }
+    if float(hp[f"{which}_alpha"]) > 0:
+        p["alpha"] = float(hp[f"{which}_alpha"])
+    if num_class is not None:
+        p["num_class"] = num_class
+    return p
+
+
+def fit_xgboost_tuned(
+    x: np.ndarray,
+    y: np.ndarray,
+    rows: np.ndarray,
+    *,
+    type_rows: np.ndarray,
+    drop_legit: np.ndarray,
+    seed: int,
+    device: str,
+    threads: int,
+    params: dict,
+) -> Predictor:
+    """The XGBoost cascade with a tuned setting in `params`: each stage's tree parameters and
+    rounds (`b_*` binary, `t_*` type), the binary fraud weight `pos_weight`, type class weights
+    `type_power` (inverse class frequency to that power, mean 1), legit downsampling
+    `majority_keep`, and the `drop_legit` rows dropped (`legit_hi_weight` 0) or kept at weight
+    `legit_hi_weight`."""
+    hp = params
+    rows = np.asarray(rows, dtype=np.int64)
+    target = (y > 0).astype(np.int32)
+    w_hi = float(hp["legit_hi_weight"])
+    binary_rows = rows[~drop_legit[rows]] if w_hi <= 0.0 else rows
+    kept, weights = cc.downsample(
+        target, binary_rows, majority=0, keep=float(hp["majority_keep"]), seed=int(seed)
+    )
+    weights = np.asarray(weights, dtype=np.float64)
+    if w_hi > 0.0:
+        weights = np.where(drop_legit[kept], weights * w_hi, weights)
+    pos = float(hp["pos_weight"])
+    if pos != 1.0:
+        weights = np.where(target[kept] == 1, weights * pos, weights)
+    type_index = rows[type_rows[rows]]
+    binary = cc._fit_matrix(
+        x,
+        target,
+        kept,
+        weights,
+        params=_tuned_stage(hp, "b", "binary:logistic", seed, device, threads),
+        rounds=int(hp["b_rounds"]),
+        nthread=threads,
+    )
+    labels = y[type_index] - 1
+    power = float(hp["type_power"])
+    if power > 0.0:
+        counts = np.bincount(labels, minlength=N_TYPES).astype(np.float64)
+        with np.errstate(divide="ignore"):
+            cw = np.where(counts > 0, (counts / counts.max()) ** (-power), 0.0)
+        tw = cw[labels]
+        tw = tw / tw.mean()
+    else:
+        tw = np.ones(type_index.size, dtype=np.float32)
+    typer = cc._fit_matrix(
+        x,
+        y - 1,
+        type_index,
+        tw,
+        params=_tuned_stage(hp, "t", "multi:softprob", seed, device, threads, num_class=N_TYPES),
+        rounds=int(hp["t_rounds"]),
         nthread=threads,
     )
 
@@ -178,7 +273,12 @@ def fit_catboost(
     return predict
 
 
-FITTERS = {"xgboost": fit_xgboost, "lightgbm": fit_lightgbm, "catboost": fit_catboost}
+FITTERS = {
+    "xgboost": fit_xgboost,
+    "xgboost_tuned": fit_xgboost_tuned,
+    "lightgbm": fit_lightgbm,
+    "catboost": fit_catboost,
+}
 
 
 def fit_lomo(

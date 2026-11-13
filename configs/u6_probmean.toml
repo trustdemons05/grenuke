@@ -1,0 +1,7 @@
+# Upload 6: upload 4 with the members combined by probability mean instead of rank average.
+extends = "u4_final.toml"
+name = "u6_probmean"
+expected_sha256 = "c87cbd793e3a49d1982c9db518cd62d3bf126a532fb74081a7164503bd2a835c"
+
+[cascade]
+blend = "mean"

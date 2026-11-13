@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Rebuild all five uploads into $OUT and check each against its expected sha256.
+# Rebuild all seven uploads into $OUT and check each against its expected sha256.
 #   GRENUKE_DATA_DIR=/dir/holding/upi-fraud-rings GRENUKE_CACHE_DIR=/scratch/cache \
 #     OUT=/scratch/out bash scripts/reproduce.sh
 # The configs share the feature cache, the matrices, the fraud scores and the members, so the
-# later builds reuse the earlier ones' work. DEVICE (cuda|cpu, default cuda), THREADS (default 6)
-# and PY (default python) pass through.
+# later builds reuse the earlier ones' work. DEVICE (cuda|cpu, default cuda), THREADS (default 6),
+# GPU_LOCK (a lock file for a shared GPU, default none) and PY (default python) pass through.
 set -euo pipefail
 : "${GRENUKE_DATA_DIR:?GRENUKE_DATA_DIR must hold upi-fraud-rings/*.csv}"
 OUT=${OUT:-outputs}
@@ -12,10 +12,11 @@ PY=${PY:-python}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p "$OUT"
 export PYTHONPATH=$REPO/src${PYTHONPATH:+:$PYTHONPATH} PYTHONUNBUFFERED=1
-for name in u1_all_legit u2_base u3_blend u4_final u5_bundle; do
+for name in u1_all_legit u2_base u3_blend u4_final u5_bundle u6_probmean u7_xgb_c1; do
   start=$(date +%s)
   "$PY" -m grenuke.build --config "$REPO/configs/$name.toml" --out "$OUT/$name.csv" \
-    --device "${DEVICE:-cuda}" --threads "${THREADS:-6}" | tee "$OUT/$name.log"
+    --device "${DEVICE:-cuda}" --threads "${THREADS:-6}" ${GPU_LOCK:+--gpu-lock "$GPU_LOCK"} |
+    tee "$OUT/$name.log"
   echo "== $name: $(( $(date +%s) - start ))s"
 done
 grep -h "the reference file" "$OUT"/u*.log

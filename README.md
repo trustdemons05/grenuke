@@ -36,16 +36,24 @@ scored by macro-F1 over the 12 classes.
 | 3 | `configs/u3_blend.toml` | 0.5487 | `76a98d00fff2fb387139b94ea2df20509c1e3789245d6cbbcaa0f934145157a0` |
 | 4 | `configs/u4_final.toml` | 0.5488 | `a4777ded4eae11b7a9dc76ef68aa90390418e61f7701d50e0ffb7d35af765b97` |
 | 5 | `configs/u5_bundle.toml` | 0.5488 | `75cb0899bfecde884b3132a2e5d8b20106587ab75c078f53286fa0ceebf85929` |
+| 6 | `configs/u6_probmean.toml` | 0.5488 | `c87cbd793e3a49d1982c9db518cd62d3bf126a532fb74081a7164503bd2a835c` |
+| 7 | `configs/u7_xgb_c1.toml` | 0.5488 | `ae21f1eac5798ae33034481f22eba9fc1ceec4d2b1b8590d1195b93005c72a65` |
 
-Uploads 4 and 5 tie on the public board. Configs layer: `u2_base` is `configs/base.toml`;
-`u3_blend` adds the LightGBM and CatBoost members; `u4_final` is `u3_blend` with `ctr_dev_single`
-dropped and `type_min_score = 0.04`. Every knob is a plain config field: the drop list, the type
-floor, each member's model, seeds, `rounds`, `params` and `weight`, and the blend mode
-(`mean` / `rank`). A new variant is a new config file.
+Uploads 4 to 7 tie on the public board; the board marks upload 5 as the pick. Configs layer:
+`u2_base` is `configs/base.toml`; `u3_blend` adds the LightGBM and CatBoost members; `u4_final`
+is `u3_blend` with `ctr_dev_single` dropped and `type_min_score = 0.04`; `u6_probmean` and
+`u7_xgb_c1` change one thing each in `u4_final` (probability mean; a tuned XGBoost member).
+
+Every knob is a plain config field: the drop list, the type floor (`type_min_score`) and the
+legit cut (`unreported_threshold`, 0.70) for the cascade or per member, and per member the model
+(`xgboost`, `xgboost_tuned`, `lightgbm`, `catboost`), `seeds`, `rounds`, `params` (both XGBoost
+stages, or the tuned setting), `binary_params` / `type_params` (one stage) and `weight`, plus the
+blend mode (`mean` / `rank`). A new variant is a new config file.
 
 ## Setup
 
-CPython 3.13 on Linux with an NVIDIA GPU (CUDA 12+ driver) is the reference setup.
+CPython 3.13 on Linux with an NVIDIA GPU is the reference setup (checked with driver 595, CUDA
+13.2, 16 GB of GPU memory and 32 GB of RAM to spare).
 
 ```bash
 git clone <this repo> grenuke && cd grenuke
@@ -71,12 +79,43 @@ python -m grenuke.build --config configs/u4_final.toml --out u4_final.csv
 The build ingests the CSVs, builds the features, trains every member, decodes, writes the file,
 checks it against the sample submission and prints its sha256 next to the expected one. Options:
 `--device cuda|cpu` (default `cuda`), `--threads N` (default 6, per library), `--gpu-lock FILE`
-(hold an `flock` on FILE around each GPU fit when the GPU is shared). Every step is cached in
+(on a shared GPU: each GPU step runs in its own process while an `flock` on FILE is held, so GPU
+memory is released between steps). Every step is cached in
 `GRENUKE_CACHE_DIR`, so a second config reuses the features, matrices, fraud scores and members it
-shares with the first. `bash scripts/reproduce.sh` builds all five and prints the verdicts.
+shares with the first. `bash scripts/reproduce.sh` builds all seven and prints the verdicts.
 
 Smoke test (no data, no GPU, a few seconds): `python -m pytest`.
 
 ## Reproducibility
 
-RESULTS_PLACEHOLDER
+Rebuilt from a fresh clone on one RTX 5060 Ti 16 GB (GPU path, 6 threads per process, GPU shared
+with other jobs through `--gpu-lock`), against the uploaded files:
+
+| # | config | result | build time |
+|---|---|---|---|
+VERIFY_TABLE
+
+What is and is not byte-reproducible:
+
+- **Features, matrices and the fraud score** are deterministic: rebuilt bitwise, at any polars
+  thread count. LightGBM runs in deterministic mode and does not depend on the thread count.
+- **XGBoost on the GPU** (`hist`, CUDA) is bitwise identical across runs and across GPU models
+  (an A100 and an RTX 5060 Ti gave the same boosters' predictions). Uploads 1, 2 and 5 use only
+  XGBoost, so the GPU path rebuilds them byte for byte.
+- **CatBoost on the GPU is not deterministic.** Two fits with the same data, seed and settings on
+  the same GPU differ by up to 0.035 in probability, and `thread_count` changes the result too.
+  Uploads 3 and 4 blend three CatBoost members, so a rebuild differs from the uploaded file in a
+  handful of October rows (the table above), which is seed-level noise: two disjoint 3-seed bags
+  of the same recipe disagree on about 13 rows. The uploaded files were built with CatBoost on
+  12-vCPU cloud GPU machines (A100 / L4) with `thread_count = -1`.
+- **CPU path** (`--device cpu`): XGBoost's CPU algorithm differs from its GPU one, so an all-CPU
+  build of upload 4 differs from the uploaded file in about 10 rows. It is deterministic run to
+  run with the same wheel. The CUDA wheel of XGBoost 3.4.1 cannot train the multi-class stage
+  without a visible GPU; install `xgboost-cpu==3.4.1` instead (the build checks this and says so).
+  The CUDA wheel's CPU path and the `xgboost-cpu` wheel do not give identical fraud scores, so CPU
+  results depend on the wheel.
+
+Times: one upload of the blend recipe trains 1 fraud score and 9 members (each three fold models)
+in about T_BLEND on the GPU above; upload 5 trains 15 fold models with two self-training refits
+each in about T_U5. A cold cache adds about 3 minutes of ingest and features. Peak memory is about
+20 GB of RAM and, for CatBoost, most of the GPU's memory.

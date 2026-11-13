@@ -1,0 +1,14 @@
+# Upload 7: upload 4 with its XGBoost member replaced by a tuned XGBoost cascade (setting c1 of a
+# hyper-parameter search): per-stage trees and rounds, fraud weight, type class weights, legit
+# downsampling, and the high-score legit rows kept at a small weight instead of dropped, with its
+# own legit cut. LightGBM, CatBoost, the type floor (0.04) and the rank blend are upload 4's.
+extends = "u4_final.toml"
+name = "u7_xgb_c1"
+expected_sha256 = "ae21f1eac5798ae33034481f22eba9fc1ceec4d2b1b8590d1195b93005c72a65"
+
+[cascade]
+members = [
+  { model = "xgboost_tuned", seeds = [0, 1, 2], unreported_threshold = 0.6322897132555859, params = { b_depth = 8, b_eta = 0.049292598251733634, b_rounds = 400, b_mcw = 4.384196299668397, b_subsample = 0.935383000919394, b_colsample = 0.385582458974313, b_lambda = 0.91324150048352, b_alpha = 1.3006924670957871, b_max_bin = 512, t_depth = 11, t_eta = 0.08568730689933401, t_rounds = 200, t_mcw = 3.2025231806466583, t_subsample = 0.7213185978500947, t_colsample = 0.5291571547696247, t_lambda = 5.400302158526671, t_alpha = 0.7521990691647142, t_max_bin = 256, pos_weight = 1.2035717598205165, type_power = 0.1267147035227936, majority_keep = 0.9394797271214822, legit_hi_weight = 0.07072842844193016 } },
+  { model = "lightgbm", seeds = [0, 1, 2] },
+  { model = "catboost", seeds = [0, 1, 2] },
+]

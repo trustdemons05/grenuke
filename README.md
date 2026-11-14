@@ -147,6 +147,7 @@ with the GPU shared with other jobs through `--gpu-lock`, and compared with the 
 | 7 | `u7_xgb_c1` | identical sha256 |
 | 9 | `u9_u5tweaks` | identical sha256 (fresh clone at `3827f11`) |
 | 10 | `u9_p4` | identical sha256 (fresh clone at `3827f11`) |
+| 14 | `u9_p4_n1x_order` | identical sha256 (fresh clone at `becab77`) |
 
 What is and is not byte-reproducible:
 

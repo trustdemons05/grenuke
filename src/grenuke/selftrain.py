@@ -353,7 +353,7 @@ def selftrain(
         **ctr,
     )
     print(f"   template rule re-typed {changed:,} rows", flush=True)
-    return np.asarray(pred, dtype=np.int64), meta
+    return np.asarray(pred, dtype=np.int64), {**meta, "test_prob": prob}
 
 
 # -- leave-one-month-out evaluation ----------------------------------------------------------

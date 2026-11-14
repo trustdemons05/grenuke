@@ -6,22 +6,31 @@ scored by macro-F1 over the 12 classes.
 
 ## Final submission
 
-Our best public score, **0.5497131249271773**, is shared exactly by two uploads, so either may be
-the one scored on the private set. Both rebuild byte for byte from this repository:
+Our best public score, **0.550449381458095**, is upload 14. It rebuilds byte for byte from this
+repository:
 
 | upload | config | build command | expected sha256 |
 |---|---|---|---|
-| 9 | `configs/u9_u5tweaks.toml` | `python -m grenuke.build --config configs/u9_u5tweaks.toml --out u9.csv` | `0be278890baf4d23568f0d1f7323d7bb4ed640a510002f898ca4709d8f677ad8` |
-| 10 | `configs/u9_p4.toml` | `python -m grenuke.build --config configs/u9_p4.toml --out u9_p4.csv` | `15f6c2b19136c57392d8026b51c6a95c73bd07c6a50d86f47d6e5c302920b62b` |
+| 14 | `configs/u9_p4_n1x_order.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order.toml --out u9_p4_n1x_order.csv` | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
 
-- **Upload 9** is the self-training recipe of upload 5, with `ctr_dev_single` and `ctr_pos`
-  dropped and `type_min_score = 0.04`. Its only member is XGBoost, so it is bitwise reproducible
-  on the GPU path.
-- **Upload 10** is upload 9 plus one post rule on its labels (`grenuke.post`): first-time P2P `PAY`
-  rows of whole rupees that are not a multiple of 10 and at least 1,000, called legit, become
-  `phishing_collect`.
-- **Reproduction check:** both were rebuilt from a fresh clone on an RTX 5060 Ti and matched the
-  uploaded files exactly. The uploaded files were built on an A100.
+- **Upload 14** is upload 10 plus two more post rules on its October labels, run in this order:
+  - **N1X bait rule** (`grenuke.post.n1x_bait`): a ten-rupee bait row (collect shape N1X: one P2P
+    `PAY` of exactly 10 rupees with no answer within 72 h) called legit becomes
+    `phishing_collect` when its sender holds a label-free operator role on a row of another month
+    (QR-to-P2P receiver, just-under request receiver, bait sender, bait-answer receiver, bot-pool
+    device, round-amount merchant payer). It adds 6 fraud calls.
+  - **Block-order rule** (`grenuke.postrules`, rule "order"): the generator writes each fraud
+    class's new devices in a fixed class order, so inside the device counter's October fraud block
+    a fraud call whose class cannot lie between its surest neighbouring devices is re-typed, with
+    its whole decode event, to the best feasible class. It re-types 7 fraud calls and adds or
+    removes none.
+- **Upload 10** (`configs/u9_p4.toml`) is upload 9 plus one post rule (`grenuke.post`): first-time
+  P2P `PAY` rows of whole rupees that are not a multiple of 10 and at least 1,000, called legit,
+  become `phishing_collect`.
+- **Upload 9** (`configs/u9_u5tweaks.toml`) is the self-training recipe of upload 5, with
+  `ctr_dev_single` and `ctr_pos` dropped and `type_min_score = 0.04`. Its only member is XGBoost,
+  so it is bitwise reproducible on the GPU path.
+- **Reproduction check:** see Reproducibility below.
 - **Versions** are pinned in `requirements.txt` (CPython 3.13, xgboost 3.4.1, numpy 2.5.4,
   polars 2.1.0). See Setup and Reproducibility below.
 
@@ -47,6 +56,10 @@ the one scored on the private set. Both rebuild byte for byte from this reposito
 5. **Self-training recipe** (`grenuke.selftrain`, uploads 5, 9 and 10): receiver pool features built from
    other months' labels, two rounds of guarded self-training on October's own high-confidence
    events (no hand labels), five seeds, and one fraud type per event.
+6. **Post rules** (`grenuke.post`, `grenuke.postrules`; uploads 10, 13 and 14): label-free rules on
+   the decoded October labels: the PAY rule (upload 10), then the N1X bait rule and the fraud-block
+   order rule (uploads 13 and 14; upload 13 uses the "order-forced" variant, which re-types only
+   where exactly one class is feasible).
 
 ## Uploads
 
@@ -61,11 +74,16 @@ the one scored on the private set. Both rebuild byte for byte from this reposito
 | 7 | `configs/u7_xgb_c1.toml` | 0.5488 | `ae21f1eac5798ae33034481f22eba9fc1ceec4d2b1b8590d1195b93005c72a65` |
 | 9 | `configs/u9_u5tweaks.toml` | 0.5497 | `0be278890baf4d23568f0d1f7323d7bb4ed640a510002f898ca4709d8f677ad8` |
 | 10 | `configs/u9_p4.toml` | 0.5497 | `15f6c2b19136c57392d8026b51c6a95c73bd07c6a50d86f47d6e5c302920b62b` |
+| 13 | `configs/u9_p4_n1x_order_forced.toml` | 0.5499 | `647af8567d9657a80d540a7bedf9f63d165079e406e2d13221c87e1721dea635` |
+| 14 | `configs/u9_p4_n1x_order.toml` | 0.5504 | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
 
-- **Ties:** uploads 4 to 7 tie with each other, and uploads 9 and 10 tie exactly; the latter pair is
-  our best.
+- **Ties:** uploads 4 to 7 tie with each other, and uploads 9 and 10 tie exactly. Upload 14 is our
+  best.
 - **Not listed:** uploads that scored below the final and are not needed to rebuild it (for
-  example upload 8, five seeds per member of upload 4, which scored the same as upload 4).
+  example upload 8, five seeds per member of upload 4, which scored the same as upload 4, and
+  uploads 11 and 12).
+- **Building blocks of uploads 13 and 14:** `u9_p4_n1x`, `u9_p4_order` and `u9_p4_order_forced`
+  apply one new rule each to upload 10 (not uploaded; their expected sha256 are in the configs).
 - **How the configs layer:**
 `u2_base` is `configs/base.toml`; `u3_blend` adds the LightGBM and CatBoost members; `u4_final`
 is `u3_blend` with `ctr_dev_single` dropped and `type_min_score = 0.04`; `u6_probmean` and

@@ -1,0 +1,8 @@
+# Upload 14, the final submission: u9-p4 plus the N1X bait rule (`u9_p4_n1x.toml`) and the
+# fraud-block rule "order", run in that order after P4.
+extends = "u9_p4_n1x.toml"
+name = "u9_p4_n1x_order"
+expected_sha256 = "8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb"
+
+[post]
+block_rule = "order"

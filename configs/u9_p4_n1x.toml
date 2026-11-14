@@ -1,0 +1,10 @@
+# u9-p4 (`u9_p4.toml`) plus a second post rule after P4 (`grenuke.post.n1x_bait`): ten-rupee bait
+# rows (collect shape N1X: one P2P PAY of exactly 10 rupees with no answer within 72 h) called
+# legit, whose sender holds a label-free operator role on a row of another month, become
+# phishing_collect.
+extends = "u9_p4.toml"
+name = "u9_p4_n1x"
+expected_sha256 = "2c0cb6660649339a99ae8e9fe3a706aaa1ed6a2e99874e832713d35635163362"
+
+[post]
+n1x_label = "phishing_collect"

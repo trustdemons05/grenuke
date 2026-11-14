@@ -1,0 +1,8 @@
+# u9-p4 plus the fraud-block rule "order-forced" (`grenuke.postrules`): the "order" rule, only
+# where exactly one class is feasible. Applied after P4.
+extends = "u9_p4.toml"
+name = "u9_p4_order_forced"
+expected_sha256 = "57e8f8b69fc12d8ed040e496579ac9c47547ab1f69dde44649dd2cc1fed22c79"
+
+[post]
+block_rule = "order-forced"

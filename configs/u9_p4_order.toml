@@ -1,0 +1,8 @@
+# u9-p4 plus the fraud-block rule "order" (`grenuke.postrules`, class-order feasibility), applied
+# after P4. It only re-types fraud calls inside the device counter's fraud block.
+extends = "u9_p4.toml"
+name = "u9_p4_order"
+expected_sha256 = "990317a68dd058d7726aab62f389917e4bc32f76b036da8a38fe067bdd28f73d"
+
+[post]
+block_rule = "order"

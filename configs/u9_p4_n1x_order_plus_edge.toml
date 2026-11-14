@@ -1,0 +1,9 @@
+# Upload 19: upload 15 (`u9_p4_n1x_order_plus.toml`) with the mule|bot edge rule applied after the
+# order rule: untagged fraud-block rows called velocity_bot whose device number lies on the mule
+# side of the mule|bot change point become mule_account (`grenuke.postrules.rules.mulebot_rule`).
+extends = "u9_p4_n1x_order_plus.toml"
+name = "u9_p4_n1x_order_plus_edge"
+expected_sha256 = "9e399061030dd06447c3134f4a2db4da466d4fc9a4b3298c6a64afc6622be4b8"
+
+[post]
+block_rule = ["order", "mulebot"]

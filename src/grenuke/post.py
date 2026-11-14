@@ -18,7 +18,8 @@ row itself never counts).
 
 `block_rule` (applied after the PAY rule): one of the fixed fraud-block rules in
 `grenuke.postrules`: "order" (class-order feasibility), "order-forced" (the same, only where
-exactly one class is feasible) or "mulebot" (mule|bot edge). Each re-types fraud calls on the
+exactly one class is feasible) or "mulebot" (mule|bot edge), or a list of them applied in the
+order given. Each re-types fraud calls on the
 test split's counter fraud block to another fraud class; no fraud call is added or removed. Inputs:
 the October probabilities and their fixed point, the decode's event ids and shape tags, the counter
 block and device numbers, and shape class sets fitted on train labels (`tag_class_counts.json`).
@@ -144,9 +145,11 @@ def block_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
     sys.modules.setdefault("rules", rules)  # `rules_forced.py` imports the module as `rules`
     from grenuke.postrules import rules_forced
 
-    name = cfg["post"]["block_rule"]
-    if name not in BLOCK_RULES:
-        raise SystemExit(f"unknown block_rule {name!r} (one of {', '.join(BLOCK_RULES)})")
+    names = cfg["post"]["block_rule"]
+    names = [names] if isinstance(names, str) else list(names)
+    for name in names:
+        if name not in BLOCK_RULES:
+            raise SystemExit(f"unknown block_rule {name!r} (one of {', '.join(BLOCK_RULES)})")
     counts = json.loads((Path(rules.__file__).parent / "tag_class_counts.json").read_text())
     sets = rules.tag_sets(counts)
     test = np.flatnonzero(meta["is_test"].astype(bool))
@@ -164,14 +167,15 @@ def block_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
     number = counter.device_number(raw).to_numpy()[meta["row"][test][block].astype(np.int64)]
     number = number.astype(np.int64)
     blk = rules.Block(number, tags[block], sets)
-    pred = np.asarray(pred, dtype=np.int64)
-    if name == "order":
-        out, fired = rules.order_rule(pred, value, blk, block, number, events, tags, sets)
-    elif name == "order-forced":
-        out, fired = rules_forced.order_rule_forced(pred, value, blk, block, number, events, tags, sets)
-    else:
-        out, fired, _ = rules.mulebot_rule(pred, fp.f, fp.d, blk, block, number, tags)
-    print(f"   block rule {name}: {len(fired):,} fraud rows re-typed", flush=True)
+    out = np.asarray(pred, dtype=np.int64)
+    for name in names:
+        if name == "order":
+            out, fired = rules.order_rule(out, value, blk, block, number, events, tags, sets)
+        elif name == "order-forced":
+            out, fired = rules_forced.order_rule_forced(out, value, blk, block, number, events, tags, sets)
+        else:
+            out, fired, _ = rules.mulebot_rule(out, fp.f, fp.d, blk, block, number, tags)
+        print(f"   block rule {name}: {len(fired):,} fraud rows re-typed", flush=True)
     return out
 
 

@@ -25,8 +25,22 @@ the October probabilities and their fixed point, the decode's event ids and shap
 block and device numbers, and shape class sets fitted on train labels (`tag_class_counts.json`).
 When a config sets both `n1x_label` and `block_rule`, the N1X rule runs first.
 
+The table `[post.edge_borders]` (absent by default), applied after `block_rule` and before the spec
+rules: the rule "edge" of `postrules/edges.py`. Each key is a border between two classes that are
+neighbours in class order, written `"left|right"` with the label names; its value is that border's
+minimum probability. A border that is not in the table is left alone. A chain model over the
+device numbers of the test split's counter fraud block gives every number a probability of lying
+right of each border. A block phone whose call is one of a listed border's two classes, and whose
+number lies on the other class's side with at least the border's probability, takes the other
+class: its rows carrying that call are re-typed, with the rows of their decode events that carry
+the same call. No fraud call is added or removed. Inputs: the labels after `block_rule`, the
+decode's event ids and shape tags, the counter block and device numbers of both splits, the train
+labels of the train split's fraud block (they fit the model's rates) and `tag_class_counts.json`.
+No probability of the blend is read.
+
 `spec_chain = true` and `spec_qr = true` (u9_p4_n1x_order_plus; both off by default), applied in
-that order after `block_rule`: the generator-spec rules 4a and 4b of `postrules/rules34.py`,
+that order after `block_rule` and the edge rule: the generator-spec rules 4a and 4b of
+`postrules/rules34.py`,
 outside the counter fraud block. 4a: the rows of a chain-hop (mf1) decode event with fewer than 3 rows over the whole frame
 (every train chain event has 3 to 6 rows) called layering_chain or mule_account become legit,
 unless a row of the event carries a certificate mark (`mrk_any`), a fraud-block or bot-pool device,
@@ -179,6 +193,53 @@ def block_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
     return out
 
 
+def edge_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
+    """The `[post.edge_borders]` rule on the October labels `pred` (test rows in row order), after
+    `block_rule`. Prints, for each listed border, the phones the chain leaves undecided (between
+    2% and 98%) with their probability of lying right of the border."""
+    from grenuke.features import store
+    from grenuke.features.events import counter
+    from grenuke.postrules import edges, rules
+
+    borders = edges.parse_borders(cfg["post"]["edge_borders"])
+    counts = json.loads((Path(rules.__file__).parent / "tag_class_counts.json").read_text())
+    is_test = meta["is_test"].astype(bool)
+    test, train = np.flatnonzero(is_test), np.flatnonzero(~is_test)
+    in_block = np.nan_to_num(meta["ctr_block"].astype(np.float64), nan=-1) == 2
+    rows = np.flatnonzero(in_block[test])
+    train_block = train[in_block[train]]
+    stacked = meta["row"].astype(np.int64)
+    numbers = counter.device_number(store.stacked().sort("row")).to_numpy()
+    tags = meta["tags"].astype(object)
+    out, fired, table = edges.edge_rule(
+        np.asarray(pred, dtype=np.int64),
+        np.asarray(meta["events"])[test].astype(np.int64),
+        rows,
+        numbers[stacked[test][rows]].astype(np.int64),
+        tags[test],
+        numbers[stacked[train_block]].astype(np.int64),
+        meta["y"][train_block].astype(np.int64),
+        tags[train_block],
+        counts,
+        train.size / test.size,
+        borders,
+    )
+    for b in sorted(borders):
+        name = f"{edges.FRAUD_LABELS[b]}|{edges.FRAUD_LABELS[b + 1]}"
+        for rec in table:
+            if rec["border"] == b and (rec["fires"] or 0.02 < rec["p_right"] < 0.98):
+                print(
+                    f"   edge {name} (min p {borders[b]:g}): phone {rec['device']} tag"
+                    f" {rec['tag'] or '-'} rows {rec['rows']} called {LABELS[rec['call']]}:"
+                    f" P(right of the border) {rec['p_right']:.4f}"
+                    f" (flat prior {rec['p_right_flat']:.4f})"
+                    + (" -> re-typed" if rec["fires"] else ""),
+                    flush=True,
+                )
+    print(f"   edge rule: {len(fired):,} fraud rows re-typed", flush=True)
+    return out
+
+
 def spec_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
     """The `[post]` generator-spec steps on the October labels `pred` (test rows in row order),
     after `block_rule`: `spec_chain` (rule 4a), then `spec_qr` (rule 4b). Needs
@@ -255,6 +316,8 @@ def post_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
         print(f"   n1x rule: {int(bait.sum()):,} legit rows called {post['n1x_label']}{note}", flush=True)
     if "block_rule" in post:
         out = block_rule(cfg, out, meta)
+    if post.get("edge_borders"):
+        out = edge_rule(cfg, out, meta)
     if post.get("spec_chain") or post.get("spec_qr"):
         out = spec_rule(cfg, out, meta)
     return out

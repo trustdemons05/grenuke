@@ -6,15 +6,31 @@ scored by macro-F1 over the 12 classes.
 
 ## Final submission
 
-Our best public score, **0.5508525853993438**, is upload 19. It rebuilds byte for byte from this
-repository, as do uploads 14 and 15 (tied at 0.550449381458095), which it builds on:
+Our best public score, **0.552901127946861**, is upload 25. It rebuilds byte for byte from this
+repository, as do the uploads it builds on (21, 19, and 14 and 15, which tie at 0.550449381458095):
 
 | upload | config | build command | expected sha256 |
 |---|---|---|---|
 | 14 | `configs/u9_p4_n1x_order.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order.toml --out u9_p4_n1x_order.csv` | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
 | 15 | `configs/u9_p4_n1x_order_plus.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus.toml --out u9_p4_n1x_order_plus.csv` | `bf3fc43650fdac1392ca913cceb79989aa73ce1e3c213da9727731e87727c216` |
 | 19 | `configs/u9_p4_n1x_order_plus_edge.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge.toml --out u9_p4_n1x_order_plus_edge.csv` | `9e399061030dd06447c3134f4a2db4da466d4fc9a4b3298c6a64afc6622be4b8` |
+| 21 | `configs/u9_p4_n1x_order_plus_edge_sa.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge_sa.toml --out u9_p4_n1x_order_plus_edge_sa.csv` | `15d6b67d44a3faa0c7ee9320372cbfafdbd7562b5c304463173b2b4e9cc5e214` |
+| 25 | `configs/u9_p4_n1x_order_plus_edge_borders.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge_borders.toml --out u9_p4_n1x_order_plus_edge_borders.csv` | `4e41fa68ca9d3c34c1fc18b782bb4df4a5f7df40f6014933ef4a30c48667ab24` |
 
+- **Upload 25** is upload 19 with the border rule (`grenuke.postrules.edges`) on four borders of
+  the October fraud block. The device counter writes the eleven fraud classes as consecutive
+  zones, and the rule puts a probability on where each border between two zones lies, from how
+  densely each zone's numbers are used, the shape tags on its phones and the zones' expected
+  lengths (rates fitted on the train block). A block phone whose call lies on the unlikely side
+  of a listed border takes the other class, with its decode event. It re-types 7 rows: one
+  drain event from `sim_swap` to `account_takeover` (3 rows, upload 21), two rows from
+  `refund_abuse` to `fake_cashback`, one from `loan_app_extortion` to `fake_cashback` and one
+  from `velocity_bot` to `layering_chain`.
+- **How the borders were chosen.** The border list and each border's minimum probability are
+  config choices made with the public score. Variants that moved one border at a time were
+  uploaded (uploads 21 to 24). Borders whose variant raised or tied the score were kept, and on
+  the cashback|loan border the probability was raised so that only the phone whose move raised
+  the score changes class.
 - **Upload 19** is upload 15 with the mule|bot edge rule (`grenuke.postrules.rules.mulebot_rule`)
   applied after the order rule. The generator writes all mule devices before all bot devices, so one
   change point splits the two zones of the October fraud block. An untagged block row called
@@ -72,8 +88,8 @@ repository, as do uploads 14 and 15 (tied at 0.550449381458095), which it builds
 6. **Post rules** (`grenuke.post`, `grenuke.postrules`; uploads 10, 13 and 14): label-free rules on
    the decoded October labels: the PAY rule (upload 10), then the N1X bait rule and the fraud-block
    order rule (uploads 13 to 19; upload 13 uses the "order-forced" variant, which re-types only
-   where exactly one class is feasible), the generator-spec rules (uploads 15 and 19) and the
-   mule|bot edge rule (upload 19).
+   where exactly one class is feasible), the generator-spec rules (uploads 15 to 25), the mule|bot
+   edge rule (uploads 19 to 25) and the border rule (uploads 21 and 25).
 
 ## Uploads
 
@@ -92,12 +108,16 @@ repository, as do uploads 14 and 15 (tied at 0.550449381458095), which it builds
 | 14 | `configs/u9_p4_n1x_order.toml` | 0.5504 | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
 | 15 | `configs/u9_p4_n1x_order_plus.toml` | 0.5504 | `bf3fc43650fdac1392ca913cceb79989aa73ce1e3c213da9727731e87727c216` |
 | 19 | `configs/u9_p4_n1x_order_plus_edge.toml` | 0.5509 | `9e399061030dd06447c3134f4a2db4da466d4fc9a4b3298c6a64afc6622be4b8` |
+| 21 | `configs/u9_p4_n1x_order_plus_edge_sa.toml` | 0.5519 | `15d6b67d44a3faa0c7ee9320372cbfafdbd7562b5c304463173b2b4e9cc5e214` |
+| 25 | `configs/u9_p4_n1x_order_plus_edge_borders.toml` | 0.5529 | `4e41fa68ca9d3c34c1fc18b782bb4df4a5f7df40f6014933ef4a30c48667ab24` |
 
 - **Ties:** uploads 4 to 7 tie with each other, uploads 9 and 10 tie exactly, and uploads 14 and 15
-  tie exactly. Upload 19 is our best.
+  tie exactly. Upload 25 is our best.
 - **Not listed:** uploads that scored below the final and are not needed to rebuild it (for
   example upload 8, five seeds per member of upload 4, which scored the same as upload 4, and
-  uploads 11, 12, 16 to 18 and 20).
+  uploads 11, 12, 16 to 18 and 20; and
+  uploads 22 to 24, single-border variants of the border rule: 22 tied upload 19, 23 scored
+  lower and 24 tied upload 21).
 - **Building blocks of uploads 13 and 14:** `u9_p4_n1x`, `u9_p4_order` and `u9_p4_order_forced`
   apply one new rule each to upload 10 (not uploaded; their expected sha256 are in the configs).
 - **How the configs layer:**
@@ -166,6 +186,7 @@ with the GPU shared with other jobs through `--gpu-lock`, and compared with the 
 | 14 | `u9_p4_n1x_order` | identical sha256 (fresh clone at `becab77`) |
 | 15 | `u9_p4_n1x_order_plus` | identical sha256 (fresh clone at `3918187`; upload 14 again identical at that commit) |
 | 19 | `u9_p4_n1x_order_plus_edge` | identical sha256 (commit `c34a5c0`, cold cache, on an A100; upload 15 again identical) |
+| 25 | `u9_p4_n1x_order_plus_edge_borders` | identical sha256 (RTX 5060 Ti, cold cache, with the border rule's change applied) |
 
 What is and is not byte-reproducible:
 

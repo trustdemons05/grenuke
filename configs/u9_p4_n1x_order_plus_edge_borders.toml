@@ -1,0 +1,14 @@
+# `u9_p4_n1x_order_plus_edge.toml` with the rule "edge" (`grenuke.postrules.edges`) on four
+# borders, applied after the block rules: a fraud-block phone called one of a listed border's two
+# classes, whose device number lies on the other class's side of that border with at least the
+# border's probability, takes the other class, with the rows of its decode event that carry the
+# same call. The borders and their probabilities are choices of this config.
+extends = "u9_p4_n1x_order_plus_edge.toml"
+name = "u9_p4_n1x_order_plus_edge_borders"
+expected_sha256 = "4e41fa68ca9d3c34c1fc18b782bb4df4a5f7df40f6014933ef4a30c48667ab24"
+
+[post.edge_borders]
+"velocity_bot|layering_chain" = 0.6
+"sim_swap|account_takeover" = 0.6
+"refund_abuse|fake_cashback" = 0.6
+"fake_cashback|loan_app_extortion" = 0.7

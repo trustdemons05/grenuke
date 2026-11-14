@@ -1,0 +1,11 @@
+# `u9_p4_n1x_order_plus_edge.toml` with the rule "edge" (`grenuke.postrules.edges`) on one border,
+# applied after the block rules: a fraud-block phone called sim_swap or account_takeover whose
+# device number lies on the other class's side of the sim_swap|account_takeover border with
+# probability at least 0.8 takes the other class, with the rows of its decode event that carry
+# the same call. The border and its probability are choices of this config.
+extends = "u9_p4_n1x_order_plus_edge.toml"
+name = "u9_p4_n1x_order_plus_edge_sa"
+expected_sha256 = "15d6b67d44a3faa0c7ee9320372cbfafdbd7562b5c304463173b2b4e9cc5e214"
+
+[post.edge_borders]
+"sim_swap|account_takeover" = 0.8

@@ -186,7 +186,7 @@ with the GPU shared with other jobs through `--gpu-lock`, and compared with the 
 | 14 | `u9_p4_n1x_order` | identical sha256 (fresh clone at `becab77`) |
 | 15 | `u9_p4_n1x_order_plus` | identical sha256 (fresh clone at `3918187`; upload 14 again identical at that commit) |
 | 19 | `u9_p4_n1x_order_plus_edge` | identical sha256 (commit `c34a5c0`, cold cache, on an A100; upload 15 again identical) |
-| 25 | `u9_p4_n1x_order_plus_edge_borders` | identical sha256 (RTX 5060 Ti, cold cache, with the border rule's change applied) |
+| 25 | `u9_p4_n1x_order_plus_edge_borders` | identical sha256 (fresh clone at `114bd57`, cold cache, RTX 5060 Ti; uploads 15, 19 and 21 again identical at that commit) |
 
 What is and is not byte-reproducible:
 

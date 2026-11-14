@@ -6,14 +6,20 @@ scored by macro-F1 over the 12 classes.
 
 ## Final submission
 
-Our best public score, **0.550449381458095**, is shared exactly by uploads 14 and 15, so either may
-be the one scored on the private set. Both rebuild byte for byte from this repository:
+Our best public score, **0.5508525853993438**, is upload 19. It rebuilds byte for byte from this
+repository, as do uploads 14 and 15 (tied at 0.550449381458095), which it builds on:
 
 | upload | config | build command | expected sha256 |
 |---|---|---|---|
 | 14 | `configs/u9_p4_n1x_order.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order.toml --out u9_p4_n1x_order.csv` | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
 | 15 | `configs/u9_p4_n1x_order_plus.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus.toml --out u9_p4_n1x_order_plus.csv` | `bf3fc43650fdac1392ca913cceb79989aa73ce1e3c213da9727731e87727c216` |
+| 19 | `configs/u9_p4_n1x_order_plus_edge.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge.toml --out u9_p4_n1x_order_plus_edge.csv` | `9e399061030dd06447c3134f4a2db4da466d4fc9a4b3298c6a64afc6622be4b8` |
 
+- **Upload 19** is upload 15 with the mule|bot edge rule (`grenuke.postrules.rules.mulebot_rule`)
+  applied after the order rule. The generator writes all mule devices before all bot devices, so one
+  change point splits the two zones of the October fraud block. An untagged block row called
+  `velocity_bot` whose device lies on the mule side of that change point becomes `mule_account`
+  (11 rows).
 - **Upload 15** is upload 14 plus three post-rule options (`grenuke.post`, `grenuke.postrules.rules34`),
   which change 4 rows: N1X operator roles may sit on any other row rather than only another month
   (one more bait row becomes `phishing_collect`); generator-spec rule 4a sets a 2-row chain-hop
@@ -65,8 +71,9 @@ be the one scored on the private set. Both rebuild byte for byte from this repos
    events (no hand labels), five seeds, and one fraud type per event.
 6. **Post rules** (`grenuke.post`, `grenuke.postrules`; uploads 10, 13 and 14): label-free rules on
    the decoded October labels: the PAY rule (upload 10), then the N1X bait rule and the fraud-block
-   order rule (uploads 13 to 15; upload 13 uses the "order-forced" variant, which re-types only
-   where exactly one class is feasible), and the generator-spec rules (upload 15).
+   order rule (uploads 13 to 19; upload 13 uses the "order-forced" variant, which re-types only
+   where exactly one class is feasible), the generator-spec rules (uploads 15 and 19) and the
+   mule|bot edge rule (upload 19).
 
 ## Uploads
 
@@ -84,12 +91,13 @@ be the one scored on the private set. Both rebuild byte for byte from this repos
 | 13 | `configs/u9_p4_n1x_order_forced.toml` | 0.5499 | `647af8567d9657a80d540a7bedf9f63d165079e406e2d13221c87e1721dea635` |
 | 14 | `configs/u9_p4_n1x_order.toml` | 0.5504 | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
 | 15 | `configs/u9_p4_n1x_order_plus.toml` | 0.5504 | `bf3fc43650fdac1392ca913cceb79989aa73ce1e3c213da9727731e87727c216` |
+| 19 | `configs/u9_p4_n1x_order_plus_edge.toml` | 0.5509 | `9e399061030dd06447c3134f4a2db4da466d4fc9a4b3298c6a64afc6622be4b8` |
 
 - **Ties:** uploads 4 to 7 tie with each other, uploads 9 and 10 tie exactly, and uploads 14 and 15
-  tie exactly; the last pair is our best.
+  tie exactly. Upload 19 is our best.
 - **Not listed:** uploads that scored below the final and are not needed to rebuild it (for
   example upload 8, five seeds per member of upload 4, which scored the same as upload 4, and
-  uploads 11, 12 and 16 to 18).
+  uploads 11, 12, 16 to 18 and 20).
 - **Building blocks of uploads 13 and 14:** `u9_p4_n1x`, `u9_p4_order` and `u9_p4_order_forced`
   apply one new rule each to upload 10 (not uploaded; their expected sha256 are in the configs).
 - **How the configs layer:**
@@ -157,6 +165,7 @@ with the GPU shared with other jobs through `--gpu-lock`, and compared with the 
 | 10 | `u9_p4` | identical sha256 (fresh clone at `3827f11`) |
 | 14 | `u9_p4_n1x_order` | identical sha256 (fresh clone at `becab77`) |
 | 15 | `u9_p4_n1x_order_plus` | identical sha256 (fresh clone at `3918187`; upload 14 again identical at that commit) |
+| 19 | `u9_p4_n1x_order_plus_edge` | identical sha256 (commit `c34a5c0`, cold cache, on an A100; upload 15 again identical) |
 
 What is and is not byte-reproducible:
 

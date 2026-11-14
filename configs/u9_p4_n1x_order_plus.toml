@@ -1,0 +1,12 @@
+# Upload 15: upload 14 (`u9_p4_n1x_order.toml`) plus three post-rule options, each off
+# by default: N1X roles from every other row of any month (`n1x_roles = "all"`), then, after the
+# block rule, the generator-spec rules 4a (`spec_chain`, short chains to legit) and 4b (`spec_qr`,
+# out-of-set merchant-QR calls re-typed) of `grenuke.postrules.rules34`.
+extends = "u9_p4_n1x_order.toml"
+name = "u9_p4_n1x_order_plus"
+expected_sha256 = "bf3fc43650fdac1392ca913cceb79989aa73ce1e3c213da9727731e87727c216"
+
+[post]
+n1x_roles = "all"
+spec_chain = true
+spec_qr = true

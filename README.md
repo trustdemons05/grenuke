@@ -6,13 +6,20 @@ scored by macro-F1 over the 12 classes.
 
 ## Final submission
 
-Our best public score, **0.550449381458095**, is upload 14. It rebuilds byte for byte from this
-repository:
+Our best public score, **0.550449381458095**, is shared exactly by uploads 14 and 15, so either may
+be the one scored on the private set. Both rebuild byte for byte from this repository:
 
 | upload | config | build command | expected sha256 |
 |---|---|---|---|
 | 14 | `configs/u9_p4_n1x_order.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order.toml --out u9_p4_n1x_order.csv` | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
+| 15 | `configs/u9_p4_n1x_order_plus.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus.toml --out u9_p4_n1x_order_plus.csv` | `bf3fc43650fdac1392ca913cceb79989aa73ce1e3c213da9727731e87727c216` |
 
+- **Upload 15** is upload 14 plus three post-rule options (`grenuke.post`, `grenuke.postrules.rules34`),
+  which change 4 rows: N1X operator roles may sit on any other row rather than only another month
+  (one more bait row becomes `phishing_collect`); generator-spec rule 4a sets a 2-row chain-hop
+  event called `layering_chain` to legit, because the generator writes chains of 3 to 6 rows; and
+  rule 4b re-types a fractional merchant-QR call from `phishing_collect` to `qr_swap`, because no
+  phishing template produces that row.
 - **Upload 14** is upload 10 plus two more post rules on its October labels, run in this order:
   - **N1X bait rule** (`grenuke.post.n1x_bait`): a ten-rupee bait row (collect shape N1X: one P2P
     `PAY` of exactly 10 rupees with no answer within 72 h) called legit becomes
@@ -58,8 +65,8 @@ repository:
    events (no hand labels), five seeds, and one fraud type per event.
 6. **Post rules** (`grenuke.post`, `grenuke.postrules`; uploads 10, 13 and 14): label-free rules on
    the decoded October labels: the PAY rule (upload 10), then the N1X bait rule and the fraud-block
-   order rule (uploads 13 and 14; upload 13 uses the "order-forced" variant, which re-types only
-   where exactly one class is feasible).
+   order rule (uploads 13 to 15; upload 13 uses the "order-forced" variant, which re-types only
+   where exactly one class is feasible), and the generator-spec rules (upload 15).
 
 ## Uploads
 
@@ -76,12 +83,13 @@ repository:
 | 10 | `configs/u9_p4.toml` | 0.5497 | `15f6c2b19136c57392d8026b51c6a95c73bd07c6a50d86f47d6e5c302920b62b` |
 | 13 | `configs/u9_p4_n1x_order_forced.toml` | 0.5499 | `647af8567d9657a80d540a7bedf9f63d165079e406e2d13221c87e1721dea635` |
 | 14 | `configs/u9_p4_n1x_order.toml` | 0.5504 | `8b5610c0fd5652c960be7c20a8e293b1e608126ff5d8ade85614c7d87a9866eb` |
+| 15 | `configs/u9_p4_n1x_order_plus.toml` | 0.5504 | `bf3fc43650fdac1392ca913cceb79989aa73ce1e3c213da9727731e87727c216` |
 
-- **Ties:** uploads 4 to 7 tie with each other, and uploads 9 and 10 tie exactly. Upload 14 is our
-  best.
+- **Ties:** uploads 4 to 7 tie with each other, uploads 9 and 10 tie exactly, and uploads 14 and 15
+  tie exactly; the last pair is our best.
 - **Not listed:** uploads that scored below the final and are not needed to rebuild it (for
   example upload 8, five seeds per member of upload 4, which scored the same as upload 4, and
-  uploads 11 and 12).
+  uploads 11, 12 and 16 to 18).
 - **Building blocks of uploads 13 and 14:** `u9_p4_n1x`, `u9_p4_order` and `u9_p4_order_forced`
   apply one new rule each to upload 10 (not uploaded; their expected sha256 are in the configs).
 - **How the configs layer:**

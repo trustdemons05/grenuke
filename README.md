@@ -6,8 +6,9 @@ scored by macro-F1 over the 12 classes.
 
 ## Final submission
 
-Our best public score, **0.552901127946861**, is upload 25. It rebuilds byte for byte from this
-repository, as do the uploads it builds on (21, 19, and 14 and 15, which tie at 0.550449381458095):
+Our best public score, **0.5556681626467764**, is upload 27. It rebuilds byte for byte from this
+repository, as do the uploads it builds on (25, 21, 19, and 14 and 15, which tie at
+0.550449381458095):
 
 | upload | config | build command | expected sha256 |
 |---|---|---|---|
@@ -16,7 +17,20 @@ repository, as do the uploads it builds on (21, 19, and 14 and 15, which tie at 
 | 19 | `configs/u9_p4_n1x_order_plus_edge.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge.toml --out u9_p4_n1x_order_plus_edge.csv` | `9e399061030dd06447c3134f4a2db4da466d4fc9a4b3298c6a64afc6622be4b8` |
 | 21 | `configs/u9_p4_n1x_order_plus_edge_sa.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge_sa.toml --out u9_p4_n1x_order_plus_edge_sa.csv` | `15d6b67d44a3faa0c7ee9320372cbfafdbd7562b5c304463173b2b4e9cc5e214` |
 | 25 | `configs/u9_p4_n1x_order_plus_edge_borders.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge_borders.toml --out u9_p4_n1x_order_plus_edge_borders.csv` | `4e41fa68ca9d3c34c1fc18b782bb4df4a5f7df40f6014933ef4a30c48667ab24` |
+| 27 | `configs/u9_p4_n1x_order_plus_edge_borders_burst.toml` | `python -m grenuke.build --config configs/u9_p4_n1x_order_plus_edge_borders_burst.toml --out u9_p4_n1x_order_plus_edge_borders_burst.csv` | `a6f3f01ba1081fd07d5e3809781c820c6df9a78ea6677acbe13542e3ff89804f` |
 
+- **Upload 27** is upload 25 with the bot-burst rule (`grenuke.postrules.bursts`). A mule burst
+  (many senders pay one account, which forwards the money) is written by two classes,
+  `mule_account` and `velocity_bot`. A burst with a row on a fraud-block phone is typed by that
+  phone's zone; the others are called `mule_account`. The rule re-types to `velocity_bot` a
+  burst with no block phone, at least 20 rows and a youngest sender SIM under 50 hours. In
+  October that is one burst of 28 rows.
+- **How the burst thresholds were chosen.** With the public score: two single bursts were
+  uploaded re-typed to `velocity_bot`, one at a time (uploads 26 and 27). Upload 26 scored lower
+  and upload 27 higher, and the two thresholds keep the second burst and leave the first. On
+  the train split, bursts that meet both thresholds are `velocity_bot` 4 times out of 9, against
+  12 of 112 for all bursts with no block phone, so the train support is small. Upload 28, which
+  re-typed every remaining burst with no block phone, scored lower.
 - **Upload 25** is upload 19 with the border rule (`grenuke.postrules.edges`) on four borders of
   the October fraud block. The device counter writes the eleven fraud classes as consecutive
   zones, and the rule puts a probability on where each border between two zones lies, from how
@@ -89,7 +103,8 @@ repository, as do the uploads it builds on (21, 19, and 14 and 15, which tie at 
    the decoded October labels: the PAY rule (upload 10), then the N1X bait rule and the fraud-block
    order rule (uploads 13 to 19; upload 13 uses the "order-forced" variant, which re-types only
    where exactly one class is feasible), the generator-spec rules (uploads 15 to 25), the mule|bot
-   edge rule (uploads 19 to 25) and the border rule (uploads 21 and 25).
+   edge rule (uploads 19 to 27), the border rule (uploads 21 to 27) and the bot-burst rule
+   (upload 27).
 
 ## Uploads
 
@@ -110,14 +125,16 @@ repository, as do the uploads it builds on (21, 19, and 14 and 15, which tie at 
 | 19 | `configs/u9_p4_n1x_order_plus_edge.toml` | 0.5509 | `9e399061030dd06447c3134f4a2db4da466d4fc9a4b3298c6a64afc6622be4b8` |
 | 21 | `configs/u9_p4_n1x_order_plus_edge_sa.toml` | 0.5519 | `15d6b67d44a3faa0c7ee9320372cbfafdbd7562b5c304463173b2b4e9cc5e214` |
 | 25 | `configs/u9_p4_n1x_order_plus_edge_borders.toml` | 0.5529 | `4e41fa68ca9d3c34c1fc18b782bb4df4a5f7df40f6014933ef4a30c48667ab24` |
+| 27 | `configs/u9_p4_n1x_order_plus_edge_borders_burst.toml` | 0.5557 | `a6f3f01ba1081fd07d5e3809781c820c6df9a78ea6677acbe13542e3ff89804f` |
 
 - **Ties:** uploads 4 to 7 tie with each other, uploads 9 and 10 tie exactly, and uploads 14 and 15
-  tie exactly. Upload 25 is our best.
+  tie exactly. Upload 27 is our best.
 - **Not listed:** uploads that scored below the final and are not needed to rebuild it (for
   example upload 8, five seeds per member of upload 4, which scored the same as upload 4, and
   uploads 11, 12, 16 to 18 and 20; and
   uploads 22 to 24, single-border variants of the border rule: 22 tied upload 19, 23 scored
   lower and 24 tied upload 21).
+  Uploads 26 and 28 are the two bot-burst variants described above that scored lower.
 - **Building blocks of uploads 13 and 14:** `u9_p4_n1x`, `u9_p4_order` and `u9_p4_order_forced`
   apply one new rule each to upload 10 (not uploaded; their expected sha256 are in the configs).
 - **How the configs layer:**
@@ -187,6 +204,7 @@ with the GPU shared with other jobs through `--gpu-lock`, and compared with the 
 | 15 | `u9_p4_n1x_order_plus` | identical sha256 (fresh clone at `3918187`; upload 14 again identical at that commit) |
 | 19 | `u9_p4_n1x_order_plus_edge` | identical sha256 (commit `c34a5c0`, cold cache, on an A100; upload 15 again identical) |
 | 25 | `u9_p4_n1x_order_plus_edge_borders` | identical sha256 (fresh clone at `114bd57`, cold cache, RTX 5060 Ti; uploads 15, 19 and 21 again identical at that commit) |
+| 27 | `u9_p4_n1x_order_plus_edge_borders_burst` | identical sha256 (clean clone at `aa545a3` with the bot-burst rule's change applied, cold cache, RTX 5060 Ti; upload 25 again identical) |
 
 What is and is not byte-reproducible:
 

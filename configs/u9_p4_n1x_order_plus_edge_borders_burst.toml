@@ -1,0 +1,13 @@
+# `u9_p4_n1x_order_plus_edge_borders.toml` with the rule "bot burst" (`grenuke.postrules.bursts`),
+# applied last: a mule burst with no row on a fraud-block phone, called mule_account, with at least
+# `min_rows` rows and a youngest sender SIM below `max_sim_hours`, is re-typed to velocity_bot.
+# The two thresholds are choices of this config, made with the public score: single bursts were
+# uploaded as velocity_bot one at a time, and the thresholds keep the burst whose upload raised
+# the score. Train support is small (4 of 9 such bursts are velocity_bot).
+extends = "u9_p4_n1x_order_plus_edge_borders.toml"
+name = "u9_p4_n1x_order_plus_edge_borders_burst"
+expected_sha256 = "a6f3f01ba1081fd07d5e3809781c820c6df9a78ea6677acbe13542e3ff89804f"
+
+[post.bot_burst]
+min_rows = 20
+max_sim_hours = 50

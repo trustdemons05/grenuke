@@ -50,6 +50,15 @@ state's fraud-labelled train rows, `postrules/state_class_counts.json`: qr_swap,
 merchant_collusion), is re-typed, with the rows of its decode event called the same class, to the
 allowed class with the largest summed macro value from the decode's fixed point. Inputs as
 `block_rule`, plus label-free family columns and raw row columns.
+
+The table `[post.bot_burst]` (absent by default), applied last: the rule "bot burst" of
+`postrules/bursts.py`. A mule burst (money-flow shapes 2 and 3: the inflows to one account and its
+onward transfers) with no row on a fraud-block phone, most of whose called rows are called
+mule_account, with at least `min_rows` rows and a youngest sender SIM (the smallest
+`sim_age_hours` of its inflow rows) below `max_sim_hours`, has its rows called mule_account
+re-typed to velocity_bot. No fraud call is added or removed. The two thresholds are config
+choices. Inputs: the labels after every other rule, the money-flow family's event ids and shapes,
+the counter block and the raw column `sim_age_hours`. No label and no probability is read.
 """
 
 from __future__ import annotations
@@ -300,6 +309,52 @@ def spec_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
     return out
 
 
+def burst_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
+    """The `[post.bot_burst]` rule on the October labels `pred` (test rows in row order), applied
+    after every other rule. Prints every mule burst with no block phone that is called
+    mule_account, with its rows and youngest sender SIM, so the thresholds' margins can be read."""
+    import polars as pl
+
+    from grenuke.features import store
+    from grenuke.postrules import bursts
+
+    min_rows, max_sim_hours = bursts.parse_thresholds(cfg["post"]["bot_burst"])
+    raw = store.stacked().sort("row")
+    if not np.array_equal(raw["row"].to_numpy(), np.arange(raw.height)):
+        raise RuntimeError("stacked rows are not 0..n-1")
+    store.ensure(("moneyflow",))
+    fam = store.load(("moneyflow",)).sort("row")
+    if not np.array_equal(fam["row"].to_numpy(), raw["row"].to_numpy()):
+        raise RuntimeError("family rows differ from the stacked rows")
+    stacked = meta["row"].astype(np.int64)
+    test = stacked[np.flatnonzero(meta["is_test"].astype(bool))]
+    call = np.full(raw.height, bursts.NO_CALL, dtype=np.int64)
+    call[test] = np.asarray(pred, dtype=np.int64)
+    phone = np.zeros(raw.height, dtype=bool)
+    phone[stacked] = np.nan_to_num(meta["ctr_block"].astype(np.float64), nan=-1) == 2
+    out, fired, table = bursts.bot_burst_rule(
+        call,
+        fam["mf_event"].fill_null(-1).to_numpy().astype(np.int64),
+        fam["mf_shape"].fill_null(0).to_numpy().astype(np.int64),
+        raw["sim_age_hours"].cast(pl.Float64).fill_null(float("nan")).to_numpy(),
+        phone,
+        min_rows,
+        max_sim_hours,
+    )
+    for rec in sorted(table, key=lambda r: (r["youngest_sim_hours"], r["event"])):
+        print(
+            f"   burst {rec['event']}: rows {rec['rows']}, youngest sender SIM"
+            f" {rec['youngest_sim_hours']:.1f} h" + (" -> re-typed" if rec["fires"] else ""),
+            flush=True,
+        )
+    print(
+        f"   bot burst rule (rows >= {min_rows}, SIM < {max_sim_hours:g} h):"
+        f" {len(fired):,} mule rows re-typed",
+        flush=True,
+    )
+    return out[test]
+
+
 def post_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
     """The config's `[post]` step on the October labels `pred` (test rows in row order)."""
     post = cfg["post"]
@@ -320,4 +375,6 @@ def post_rule(cfg: dict, pred: np.ndarray, meta: dict) -> np.ndarray:
         out = edge_rule(cfg, out, meta)
     if post.get("spec_chain") or post.get("spec_qr"):
         out = spec_rule(cfg, out, meta)
+    if post.get("bot_burst"):
+        out = burst_rule(cfg, out, meta)
     return out

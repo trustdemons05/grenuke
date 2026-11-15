@@ -73,6 +73,7 @@ repository, as do the uploads it builds on (25, 21, 19, and 14 and 15, which tie
 - **Upload 9** (`configs/u9_u5tweaks.toml`) is the self-training recipe of upload 5, with
   `ctr_dev_single` and `ctr_pos` dropped and `type_min_score = 0.04`. Its only member is XGBoost,
   so it is bitwise reproducible on the GPU path.
+- **Notebook:** `final.ipynb` runs the build of upload 27 and checks its sha256.
 - **Reproduction check:** see Reproducibility below.
 - **Versions** are pinned in `requirements.txt` (CPython 3.13, xgboost 3.4.1, numpy 2.5.4,
   polars 2.1.0). See Setup and Reproducibility below.
